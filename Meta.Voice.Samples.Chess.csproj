@@ -10,7 +10,7 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{39AE1586-A96B-929E-A9BD-A3B166B0F10C}</ProjectGuid>
+    <ProjectGuid>{A5702D75-950E-C811-50FB-1287560D0B37}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <AssemblyName>Meta.Voice.Samples.Chess</AssemblyName>
@@ -941,19 +941,19 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="Meta.WitAi.csproj">
-      <Project>{D15B90EE-698D-CB22-676E-3B84EB6504C6}</Project>
+      <Project>{002D891B-CD56-9212-57DF-8157C69A4386}</Project>
       <Name>Meta.WitAi</Name>
     </ProjectReference>
     <ProjectReference Include="VoiceSDK.Runtime.csproj">
-      <Project>{8F9534FE-A208-9F9F-8C93-4650E4BF264A}</Project>
+      <Project>{A977DF84-7D06-46BB-E9A8-86E78A041899}</Project>
       <Name>VoiceSDK.Runtime</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.WitAi.Conduit.csproj">
-      <Project>{4C47FBDC-5B2D-7B08-804A-A6F47C718E7D}</Project>
+      <Project>{3B52409E-656E-7AC4-8BB0-5BB1872005EA}</Project>
       <Name>Meta.WitAi.Conduit</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.WitAi.Lib.csproj">
-      <Project>{F7665015-8497-4052-D52C-81C1B1DCDB74}</Project>
+      <Project>{E8C89A96-1901-5651-AF85-B66F670DD2CF}</Project>
       <Name>Meta.WitAi.Lib</Name>
     </ProjectReference>
   </ItemGroup>

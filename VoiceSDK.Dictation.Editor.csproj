@@ -10,7 +10,7 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{AFD5653C-A01D-FBFF-0E1A-D4A564C467A5}</ProjectGuid>
+    <ProjectGuid>{2470A643-205B-B13E-9BFF-2A6ABAB65E07}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <AssemblyName>VoiceSDK.Dictation.Editor</AssemblyName>
@@ -970,23 +970,23 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="VoiceSDK.Dictation.Runtime.csproj">
-      <Project>{648FC04F-0DD4-B135-9260-E1A62E5FB7FB}</Project>
+      <Project>{95969085-06CA-2276-E8B6-71ABA5B18DD2}</Project>
       <Name>VoiceSDK.Dictation.Runtime</Name>
     </ProjectReference>
     <ProjectReference Include="Facebook.Wit.Dictation.csproj">
-      <Project>{203AAF6E-8A84-8EA2-2523-C86E5D4088CA}</Project>
+      <Project>{737D94FA-DC92-A2B2-C6B2-2A8ED7EED437}</Project>
       <Name>Facebook.Wit.Dictation</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.WitAi.Editor.csproj">
-      <Project>{9103E9B4-B2F6-8A46-DEC6-0B5156847E55}</Project>
+      <Project>{54F10D53-88CE-4E36-2F0C-0413DB5889D7}</Project>
       <Name>Meta.WitAi.Editor</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.WitAi.csproj">
-      <Project>{D15B90EE-698D-CB22-676E-3B84EB6504C6}</Project>
+      <Project>{002D891B-CD56-9212-57DF-8157C69A4386}</Project>
       <Name>Meta.WitAi</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.WitAi.Lib.csproj">
-      <Project>{F7665015-8497-4052-D52C-81C1B1DCDB74}</Project>
+      <Project>{E8C89A96-1901-5651-AF85-B66F670DD2CF}</Project>
       <Name>Meta.WitAi.Lib</Name>
     </ProjectReference>
   </ItemGroup>

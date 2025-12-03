@@ -10,7 +10,7 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{8F9534FE-A208-9F9F-8C93-4650E4BF264A}</ProjectGuid>
+    <ProjectGuid>{A977DF84-7D06-46BB-E9A8-86E78A041899}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <AssemblyName>VoiceSDK.Runtime</AssemblyName>
@@ -954,23 +954,23 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="AssistantCoreSDKRuntime.csproj">
-      <Project>{4C233FB0-AF34-721A-F584-BCD5D84674D1}</Project>
+      <Project>{16246EA1-4790-0CE4-6F7F-FBC6F68D6C88}</Project>
       <Name>AssistantCoreSDKRuntime</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.WitAi.csproj">
-      <Project>{D15B90EE-698D-CB22-676E-3B84EB6504C6}</Project>
+      <Project>{002D891B-CD56-9212-57DF-8157C69A4386}</Project>
       <Name>Meta.WitAi</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.WitAi.Conduit.csproj">
-      <Project>{4C47FBDC-5B2D-7B08-804A-A6F47C718E7D}</Project>
+      <Project>{3B52409E-656E-7AC4-8BB0-5BB1872005EA}</Project>
       <Name>Meta.WitAi.Conduit</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.WitAi.Lib.csproj">
-      <Project>{F7665015-8497-4052-D52C-81C1B1DCDB74}</Project>
+      <Project>{E8C89A96-1901-5651-AF85-B66F670DD2CF}</Project>
       <Name>Meta.WitAi.Lib</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.WitAi.TTS.csproj">
-      <Project>{4C0E61D6-C918-C03E-8841-6DE12E99840B}</Project>
+      <Project>{E7D8505E-4A49-3C9B-15CC-D3A3883DA0B4}</Project>
       <Name>Meta.WitAi.TTS</Name>
     </ProjectReference>
   </ItemGroup>
