@@ -356,9 +356,9 @@
     <Compile Include="Assets\Oculus\Interaction\Runtime\Scripts\MaterialProperties\RoundedBoxProperties.cs" />
     <Compile Include="Assets\Oculus\Interaction\Runtime\Scripts\Interaction\Pointable\PointableElement.cs" />
     <Compile Include="Assets\Oculus\Interaction\Runtime\Scripts\Interaction\Models\Locomotion\Turn\LocomotionTurnerInteractor.cs" />
-    <Compile Include="Assets\Oculus\Interaction\Runtime\Scripts\Interaction\Core\MultiAction.cs" />
     <Compile Include="Assets\Oculus\Interaction\Runtime\Scripts\PoseDetection\SequenceActiveState.cs" />
     <Compile Include="Assets\Oculus\Interaction\Runtime\Scripts\Selection\Hands\IndexPinchSelector.cs" />
+    <Compile Include="Assets\Oculus\Interaction\Runtime\Scripts\Interaction\Core\MultiAction.cs" />
     <Compile Include="Assets\Oculus\Interaction\Runtime\Scripts\Interaction\Surfaces\ISurfaceClipper.cs" />
     <Compile Include="Assets\Oculus\Interaction\Runtime\Scripts\Input\Controllers\ControllerButtonUsageActiveState.cs" />
     <Compile Include="Assets\Oculus\Interaction\Runtime\Scripts\Collisions\IsPointWithinCollider.cs" />

@@ -134,7 +134,6 @@ GameObject:
   - component: {fileID: 20994677}
   - component: {fileID: 20994676}
   - component: {fileID: 20994675}
-  - component: {fileID: 20994678}
   m_Layer: 0
   m_Name: Cylinder2
   m_TagString: Untagged
@@ -151,7 +150,7 @@ Transform:
   m_GameObject: {fileID: 20994673}
   serializedVersion: 2
   m_LocalRotation: {x: 0.5314408, y: -0, z: -0, w: 0.84709543}
-  m_LocalPosition: {x: 0.413, y: 0.543, z: 0.005}
+  m_LocalPosition: {x: 0.413, y: 0.543, z: 0.004999995}
   m_LocalScale: {x: 0.05, y: 0.2, z: 0.05}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -172,7 +171,7 @@ CapsuleCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
@@ -230,26 +229,6 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 20994673}
   m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
---- !u!1818360608 &20994678
-PositionConstraint:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 20994673}
-  m_Enabled: 1
-  serializedVersion: 2
-  m_Weight: 1
-  m_TranslationAtRest: {x: 0.413, y: 0.543, z: 0.005}
-  m_TranslationOffset: {x: -0.0013000071, y: 0.10951084, z: 0.16681315}
-  m_AffectTranslationX: 1
-  m_AffectTranslationY: 1
-  m_AffectTranslationZ: 1
-  m_Active: 1
-  m_IsLocked: 0
-  m_Sources:
-  - sourceTransform: {fileID: 1396408851}
-    weight: 1
 --- !u!1001 &36945192
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -401,34 +380,13 @@ GameObject:
   - component: {fileID: 257724091}
   - component: {fileID: 257724090}
   - component: {fileID: 257724089}
-  - component: {fileID: 257724088}
   m_Layer: 0
-  m_Name: Sphere
+  m_Name: ball
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!1818360608 &257724088
-PositionConstraint:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 257724087}
-  m_Enabled: 1
-  serializedVersion: 2
-  m_Weight: 1
-  m_TranslationAtRest: {x: 0.412, y: 0.823, z: 0.587}
-  m_TranslationOffset: {x: -0.0009999871, y: 0.10501647, z: 0.21990931}
-  m_AffectTranslationX: 1
-  m_AffectTranslationY: 1
-  m_AffectTranslationZ: 1
-  m_Active: 1
-  m_IsLocked: 0
-  m_Sources:
-  - sourceTransform: {fileID: 298617490}
-    weight: 1
 --- !u!135 &257724089
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -444,7 +402,7 @@ SphereCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
@@ -558,7 +516,6 @@ GameObject:
   - component: {fileID: 298617493}
   - component: {fileID: 298617492}
   - component: {fileID: 298617491}
-  - component: {fileID: 298617494}
   m_Layer: 0
   m_Name: Cylinder3
   m_TagString: Untagged
@@ -596,7 +553,7 @@ CapsuleCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
@@ -654,26 +611,63 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 298617489}
   m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
---- !u!1818360608 &298617494
-PositionConstraint:
+--- !u!1 &444418176
+GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 298617489}
-  m_Enabled: 1
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 444418178}
+  - component: {fileID: 444418179}
+  m_Layer: 0
+  m_Name: GameObject
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &444418178
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 444418176}
   serializedVersion: 2
-  m_Weight: 1
-  m_TranslationAtRest: {x: 0.413, y: 0.71798354, z: 0.3670907}
-  m_TranslationOffset: {x: -0.000100016594, y: 0.10977751, z: 0.17129946}
-  m_AffectTranslationX: 1
-  m_AffectTranslationY: 1
-  m_AffectTranslationZ: 1
-  m_Active: 1
-  m_IsLocked: 0
-  m_Sources:
-  - sourceTransform: {fileID: 1999911902}
-    weight: 1
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.7166254, y: 0.45894855, z: 0.0076469732}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &444418179
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 444418176}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf98531de5d4a23479f1c6d0e3217f3a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  shoulderJoint: {fileID: 1396408851}
+  elbowJoint: {fileID: 1999911902}
+  ball: {fileID: 257724092}
+  upperArmLength: 0.2
+  forearmLength: 0.2
+  shoulderPitchRange: {x: -45, y: 90}
+  elbowRange: {x: 0, y: 150}
+  dwellTime: 2
+  toleranceRadius: 0.05
+  markerColor: {r: 0, g: 1, b: 0, a: 1}
+  markerSize: 0.05
+  enableLogging: 0
+  dataFolderName: ExperimentData
 --- !u!1 &455496909
 GameObject:
   m_ObjectHideFlags: 0
@@ -683,7 +677,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 455496911}
-  - component: {fileID: 455496910}
   - component: {fileID: 455496912}
   m_Layer: 0
   m_Name: jointmove
@@ -692,35 +685,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &455496910
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 455496909}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5f5cd38d2c944524b9a4a3aa92481ccb, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  emgProcessor: {fileID: 0}
-  joint1: {fileID: 1396408851}
-  joint2: {fileID: 1999911902}
-  speedMultiplier: 1
-  maxRotationSpeed: 90
-  joint1MinAngle: 0
-  joint1MaxAngle: 90
-  joint2MinAngle: -90
-  joint2MaxAngle: 90
-  joint1BendChannel: 1
-  joint1ExtendChannel: 1
-  joint2BendChannel: 2
-  joint2ExtendChannel: 3
-  activationThreshold: 0.1
-  dominanceThreshold: 0.15
-  showDebugGUI: 1
-  logControlValues: 0
 --- !u!4 &455496911
 Transform:
   m_ObjectHideFlags: 0
@@ -745,20 +709,34 @@ MonoBehaviour:
   m_GameObject: {fileID: 455496909}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a87eba13cf609234c8dd705ffdd78c91, type: 3}
+  m_Script: {fileID: 11500000, guid: a76b8ed7f4e2a3243a3dadb3932572a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  controlMode: 0
+  manualJoint1Angle: 0
+  manualJoint2Angle: 0
   emgProcessor: {fileID: 0}
-  joints: []
-  rotationAxes: 
-  useManualControl: 1
-  manualAngles: []
+  joint1: {fileID: 1396408851}
+  joint2: {fileID: 1999911902}
+  baseObject: {fileID: 1321051929}
+  link1: {fileID: 20994674}
+  link2: {fileID: 298617490}
+  endEffector: {fileID: 257724092}
+  baseToJoint1Length: 0.2
+  joint1ToJoint2Length: 0.4
+  link2Length: 0.4
   speedMultiplier: 1
   maxRotationSpeed: 90
-  minAngle: -90
-  maxAngle: 90
-  bendChannels: 
-  extendChannels: 
+  joint1MinAngle: -90
+  joint1MaxAngle: 90
+  joint2MinAngle: -90
+  joint2MaxAngle: 90
+  joint1RotationAxis: {x: 1, y: 0, z: 0}
+  joint2RotationAxis: {x: 0, y: 0, z: 1}
+  joint1BendChannel: 1
+  joint1ExtendChannel: 2
+  joint2BendChannel: 3
+  joint2ExtendChannel: 4
   activationThreshold: 5
   dominanceThreshold: 10
   showDebugGUI: 1
@@ -1675,7 +1653,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1999911902}
-  - component: {fileID: 1999911903}
   m_Layer: 0
   m_Name: PivotObject2
   m_TagString: Untagged
@@ -1698,26 +1675,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1818360608 &1999911903
-PositionConstraint:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1999911901}
-  m_Enabled: 1
-  serializedVersion: 2
-  m_Weight: 1
-  m_TranslationAtRest: {x: 0.4131, y: 0.60820603, z: 0.19579124}
-  m_TranslationOffset: {x: 0.000100016594, y: 0.06520605, z: 0.19079125}
-  m_AffectTranslationX: 1
-  m_AffectTranslationY: 1
-  m_AffectTranslationZ: 1
-  m_Active: 1
-  m_IsLocked: 0
-  m_Sources:
-  - sourceTransform: {fileID: 20994674}
-    weight: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -1726,7 +1683,6 @@ SceneRoots:
   - {fileID: 237669583}
   - {fileID: 1851799782}
   - {fileID: 838262102}
-  - {fileID: 455496911}
   - {fileID: 1321051929}
   - {fileID: 1396408851}
   - {fileID: 20994674}
@@ -1735,4 +1691,6 @@ SceneRoots:
   - {fileID: 257724092}
   - {fileID: 1489283117}
   - {fileID: 1808495978}
+  - {fileID: 455496911}
   - {fileID: 1387188572}
+  - {fileID: 444418178}
