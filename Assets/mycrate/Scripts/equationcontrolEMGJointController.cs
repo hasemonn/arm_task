@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using LSL4Unity.Samples.SimpleInlet;
 
 public class IndependentEMGJointController : MonoBehaviour
@@ -69,6 +69,10 @@ public class IndependentEMGJointController : MonoBehaviour
     [Header("Control Thresholds")]
     [SerializeField, Range(0f, 20f)] private float activationThreshold = 5f;
     [SerializeField, Range(0f, 20f)] private float dominanceThreshold = 10f;
+
+    [Header("Physics Parameters")]
+    [SerializeField, Range(0f, 10f)] private float dampingCoefficient = 2f; // 粘性抵抗係数（大きいほど早く止まる）
+    [SerializeField, Range(0f, 1f)] private float velocityThreshold = 0.1f; // この速度以下になったら完全停止
 
     [Header("Debug Display")]
     [SerializeField] private bool showDebugGUI = true;
@@ -227,35 +231,67 @@ public class IndependentEMGJointController : MonoBehaviour
     void CalculateJointControl()
     {
         float dt = Time.deltaTime;
-        // Joint 1 Control
+
+        // リンクの長さと慣性モーメント
+        float length1 = 0.2f;  // Link1 length
+        float length2 = 0.2f;  // Link2 length
+        float mass1 = 1.0f;    // Link1 mass 
+        float mass2 = 1.0f;    // Link2 mass 
+
+        // 慣性モーメント I = m * L^2 
+        float inertia1 = mass1 * length1 * length1;
+        float inertia2 = mass2 * length2 * length2;
+
+        // Joint 1 Control: EMG信号からトルクを計算
         float joint1BendRatio = GetChannelRatio(joint1BendChannel);
         float joint1ExtendRatio = GetChannelRatio(joint1ExtendChannel);
-        float joint1Speed = CalculateJoyConSpeed(joint1BendRatio, joint1ExtendRatio);
+        float joint1Torque = CalculateTorque(joint1BendRatio, joint1ExtendRatio);
 
-        // Joint 2 Control
+        // Joint 2 Control: EMG信号からトルクを計算
         float joint2BendRatio = GetChannelRatio(joint2BendChannel);
         float joint2ExtendRatio = GetChannelRatio(joint2ExtendChannel);
-        float joint2Speed = CalculateJoyConSpeed(joint2BendRatio, joint2ExtendRatio);
+        float joint2Torque = CalculateTorque(joint2BendRatio, joint2ExtendRatio);
 
-        // Joint 1
-        float j1Accel = (joint1Speed - joint1LastSpeed) / dt; // 加速度 = 速度差分 / 時間
-        Joint1Jerk = (j1Accel - joint1LastAccel) / dt;        // ジャーク = 加速度差分 / 時間
-        Joint1Acceleration = j1Accel;                         // プロパティ更新
+        // Joint 1: 粘性抵抗を含む角加速度を計算
+        // 運動方程式: τ - b*ω = I*α → α = (τ - b*ω) / I
+        float dampingForce1 = dampingCoefficient * joint1LastSpeed;
+        float j1Accel = (joint1Torque - dampingForce1) / inertia1;
+        Joint1Jerk = (j1Accel - joint1LastAccel) / dt;
+        Joint1Acceleration = j1Accel;
 
-        joint1LastSpeed = joint1Speed; // 次フレーム用に保存
+        // Joint 1: 角加速度を積分して角速度を更新
+        float joint1Speed = joint1LastSpeed + j1Accel * dt;
+
+        // 速度が閾値以下になったら完全停止（微小振動を防ぐ）
+        if (Mathf.Abs(joint1Speed) < velocityThreshold && Mathf.Abs(joint1Torque) < 0.1f)
+        {
+            joint1Speed = 0f;
+        }
+
+        joint1LastSpeed = joint1Speed;
         joint1LastAccel = j1Accel;
 
-        // Joint 2
-        float j2Accel = (joint2Speed - joint2LastSpeed) / dt;
+        // Joint 2: 粘性抵抗を含む角加速度を計算
+        float dampingForce2 = dampingCoefficient * joint2LastSpeed;
+        float j2Accel = (joint2Torque - dampingForce2) / inertia2;
         Joint2Jerk = (j2Accel - joint2LastAccel) / dt;
         Joint2Acceleration = j2Accel;
+
+        // Joint 2: 角加速度を積分して角速度を更新
+        float joint2Speed = joint2LastSpeed + j2Accel * dt;
+
+        // 速度が閾値以下になったら完全停止
+        if (Mathf.Abs(joint2Speed) < velocityThreshold && Mathf.Abs(joint2Torque) < 0.1f)
+        {
+            joint2Speed = 0f;
+        }
 
         joint2LastSpeed = joint2Speed;
         joint2LastAccel = j2Accel;
 
-        // Update target angles based on speed (independent of initial rotation)
-        joint1TargetAngle += joint1Speed * Time.deltaTime;
-        joint2TargetAngle += joint2Speed * Time.deltaTime;
+        // 角速度を積分して角度を更新
+        joint1TargetAngle += joint1Speed * dt;
+        joint2TargetAngle += joint2Speed * dt;
 
         // Clamp angles to limits
         joint1TargetAngle = Mathf.Clamp(joint1TargetAngle, joint1MinAngle, joint1MaxAngle);
@@ -263,9 +299,9 @@ public class IndependentEMGJointController : MonoBehaviour
     }
 
     /// <summary>
-    /// Joy-Con style speed calculation: determine direction and speed from EMG ratio difference
+    /// Calculate torque from EMG ratio difference
     /// </summary>
-    float CalculateJoyConSpeed(float bendRatio, float extendRatio)
+    float CalculateTorque(float bendRatio, float extendRatio)
     {
         // Apply activation threshold
         if (bendRatio < activationThreshold) bendRatio = 0f;
@@ -280,12 +316,12 @@ public class IndependentEMGJointController : MonoBehaviour
             return 0f; // Antagonist state - no movement
         }
 
-        // Convert percentage difference to rotation speed
-        // 100% difference = maxRotationSpeed
-        float speedRatio = difference / 100f;
-        float speed = speedRatio * maxRotationSpeed * speedMultiplier;
+        // Convert percentage difference to torque
+        // 100% difference = maxRotationSpeed (使用を最大トルクとして流用)
+        float torqueRatio = difference / 100f;
+        float torque = torqueRatio * maxRotationSpeed * speedMultiplier;
 
-        return speed;
+        return torque;
     }
 
     /// <summary>
@@ -370,14 +406,14 @@ public class IndependentEMGJointController : MonoBehaviour
     {
         float j1BendRatio = GetChannelRatio(joint1BendChannel);
         float j1ExtendRatio = GetChannelRatio(joint1ExtendChannel);
-        float j1Speed = CalculateJoyConSpeed(j1BendRatio, j1ExtendRatio);
+        float j1Torque = CalculateTorque(j1BendRatio, j1ExtendRatio);
 
         float j2BendRatio = GetChannelRatio(joint2BendChannel);
         float j2ExtendRatio = GetChannelRatio(joint2ExtendChannel);
-        float j2Speed = CalculateJoyConSpeed(j2BendRatio, j2ExtendRatio);
+        float j2Torque = CalculateTorque(j2BendRatio, j2ExtendRatio);
 
-        Debug.Log($"EMG Independent Control - J1: {joint1TargetAngle:F1}° (speed:{j1Speed:F1}°/s) | " +
-                  $"J2: {joint2TargetAngle:F1}° (speed:{j2Speed:F1}°/s) | " +
+        Debug.Log($"EMG Independent Control - J1: {joint1TargetAngle:F1}° (torque:{j1Torque:F1}, speed:{joint1LastSpeed:F1}°/s, accel:{Joint1Acceleration:F1}°/s²) | " +
+                  $"J2: {joint2TargetAngle:F1}° (torque:{j2Torque:F1}, speed:{joint2LastSpeed:F1}°/s, accel:{Joint2Acceleration:F1}°/s²) | " +
                   $"Ch{joint1BendChannel}/Ch{joint1ExtendChannel}: {j1BendRatio:F1}%/{j1ExtendRatio:F1}% | " +
                   $"Ch{joint2BendChannel}/Ch{joint2ExtendChannel}: {j2BendRatio:F1}%/{j2ExtendRatio:F1}%");
     }
@@ -505,7 +541,7 @@ public class IndependentEMGJointController : MonoBehaviour
         {
             ResetJointPositions();
         }
-        
+
         if (GUILayout.Button("Update Initial Rotations"))
         {
             UpdateInitialRotations();
