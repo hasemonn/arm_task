@@ -29,12 +29,16 @@ public class HapticUDPSender : MonoBehaviour
     [SerializeField] private PowerLevel channel8_level = PowerLevel.Off;
     [SerializeField] private PowerLevel channel9_level = PowerLevel.Off;
 
+    [Header("Vibration Control")]
+    [Tooltip("振動強度のグローバル制御 (0=OFF, 1=ON)")]
+    [SerializeField, Range(0, 1)] private int vibrationIntensity = 1;
+
     [Header("Auto Send Settings")]
     [Tooltip("チャンネル値の変更を自動的にUDP送信する")]
     [SerializeField] private bool autoSendOnChange = true;
 
     [Tooltip("自動送信の間隔(秒) リアルタイム性を保つため小さい値推奨")]
-    [SerializeField, Range(0.01f, 0.5f)] private float autoSendInterval = 0.5f;
+    [SerializeField, Range(0.01f, 0.5f)] private float autoSendInterval = 0.001f;
 
     [Header("Debug")]
     [Tooltip("送信データをログに出力する")]
@@ -116,11 +120,15 @@ public class HapticUDPSender : MonoBehaviour
 
     void Update()
     {
-        if (autoSendOnChange && Time.time - lastAutoSendTime >= autoSendInterval)
+        if (autoSendOnChange)
         {
-            if (HasChannelChanged())
+            // 変更の有無に関わらず、定期的に送信する（Mbed側の受信タイミングに対応）
+            if (Time.time - lastAutoSendTime >= autoSendInterval)
             {
-                Debug.Log("HapticUDPSender: Channel changed detected in Update()");
+                if (HasChannelChanged())
+                {
+                    Debug.Log("HapticUDPSender: Channel changed detected in Update()");
+                }
                 SendChannelValues();
                 UpdatePreviousChannels();
                 lastAutoSendTime = Time.time;
@@ -137,6 +145,7 @@ public class HapticUDPSender : MonoBehaviour
             Debug.Log("HapticUDPSender: OnValidate() triggered - sending channel values");
             SendChannelValues();
             UpdatePreviousChannels();
+            lastAutoSendTime = Time.time; // 送信時刻を更新
         }
     }
 
@@ -180,7 +189,7 @@ public class HapticUDPSender : MonoBehaviour
     {
         ToMbed data = new ToMbed
         {
-            vibration_intensity = 1,
+            vibration_intensity = vibrationIntensity,
             Vibration = new double[10],
             ch1 = 0f,
             ch2 = 0f,

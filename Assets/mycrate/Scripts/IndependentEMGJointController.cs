@@ -13,8 +13,8 @@ public class IndependentEMGJointController : MonoBehaviour
     [SerializeField] private ControlMode controlMode = ControlMode.EMG;
 
     [Header("Manual Control (Manual Mode Only)")]
-    [SerializeField, Range(-180f, 180f)] private float manualJoint1Angle = 0f;
-    [SerializeField, Range(-180f, 180f)] private float manualJoint2Angle = 0f;
+    [SerializeField, Range(-25f, 75f)] private float manualJoint1Angle = 0f;
+    [SerializeField, Range(-20f, 160f)] private float manualJoint2Angle = 0f;
 
     [Header("EMG Data Source (EMG Mode Only)")]
     [SerializeField] private EMGSignalProcessor emgProcessor;
@@ -51,10 +51,10 @@ public class IndependentEMGJointController : MonoBehaviour
     [Header("Joint Control Settings")]
     [SerializeField, Range(0.1f, 5f)] private float speedMultiplier = 1f;
     [SerializeField, Range(1f, 180f)] private float maxRotationSpeed = 90f; // degrees per second
-    [SerializeField, Range(-180f, 180f)] private float joint1MinAngle = -30f;
-    [SerializeField, Range(-180f, 180f)] private float joint1MaxAngle = 80f;
-    [SerializeField, Range(-180f, 180f)] private float joint2MinAngle = 0f;
-    [SerializeField, Range(-180f, 180f)] private float joint2MaxAngle = 160f;
+    [SerializeField, Range(-25f, 0f)] private float joint1MinAngle = -20f;
+    [SerializeField, Range(0f, 75f)] private float joint1MaxAngle = 100f;
+    [SerializeField, Range(-20f, 0f)] private float joint2MinAngle = -20f;
+    [SerializeField, Range(0f, 160f)] private float joint2MaxAngle = 160f;
 
     [Header("Joint Rotation Axes")]
     [SerializeField] private Vector3 joint1RotationAxis = Vector3.forward; // Z-axis by default
