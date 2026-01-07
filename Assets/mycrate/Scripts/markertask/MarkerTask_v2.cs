@@ -51,7 +51,14 @@ public class MarkerTask : MonoBehaviour
     
     [Header("Data Logging")]
     public bool enableLogging = true;
-    public string dataFolderName = "ExperimentData";
+    public SaveDestination saveDestination = SaveDestination.KP;
+    public string subFolderName = "";
+
+    public enum SaveDestination
+    {
+        KP,
+        KR
+    }
     
     // 現在のターゲット情報 - 2DOF
     private Vector3 currentTargetPosition;
@@ -78,10 +85,17 @@ public class MarkerTask : MonoBehaviour
     // データロギング
     private List<MotionData> dataBuffer = new List<MotionData>();
     private Vector3 lastPosition;
-    private float[] lastJointVelocities;
+    private float[] lastJointAngles;
     private float actualPathLength = 0f;
     private Vector3 trialStartPosition;
     private float trialStartTime;
+    private float lastLogTime = 0f;
+
+    // 微分計算の最小時間間隔（数値的破綻を防ぐ）
+    private const float MIN_DELTA_TIME = 0.0001f;
+
+    // データサンプリング周波数: 1000Hz
+    private const float LOG_INTERVAL = 0.001f; // 1ms = 1000Hz
     
     [System.Serializable]
     public struct TrialSummary
@@ -133,7 +147,7 @@ public class MarkerTask : MonoBehaviour
     
     void Start()
     {
-        lastJointVelocities = new float[2];
+        lastJointAngles = new float[2];
 
         if (jointController == null)
         {
@@ -157,7 +171,13 @@ public class MarkerTask : MonoBehaviour
 
         if (enableLogging && ball != null)
         {
-            LogData();
+            // 1000Hz (1ms間隔) でデータをサンプリング
+            float currentTime = Time.time;
+            if (currentTime - lastLogTime >= LOG_INTERVAL)
+            {
+                LogData();
+                lastLogTime = currentTime;
+            }
         }
     }
 
@@ -463,6 +483,7 @@ public class MarkerTask : MonoBehaviour
         Debug.Log($"[P{patternIndex}] Marker creation complete. Final check: {(currentMarker != null ? "OK" : "NULL!")}");
 
         trialStartTime = Time.time;
+        lastLogTime = Time.time; // 1000Hzサンプリング用タイマーをリセット
         trialStartPosition = ball != null ? ball.position : Vector3.zero;
         actualPathLength = 0f;
         dataBuffer.Clear();
@@ -566,57 +587,63 @@ public class MarkerTask : MonoBehaviour
     void LogData()
     {
         Vector3 currentPosition = ball.position;
-        
+
         // 移動距離を累積
         if (lastPosition != Vector3.zero)
         {
             actualPathLength += Vector3.Distance(currentPosition, lastPosition);
         }
-        
-        // 現在の関節角度を取得(簡易版 - 実際のジョイント角度に置き換えてください)
+
+        // 現在の関節角度を取得
         float[] currentJointAngles = GetCurrentJointAngles();
         float[] currentJointVelocities = CalculateJointVelocities(currentJointAngles);
-        float[] jerks = CalculateJerks(currentJointVelocities, lastJointVelocities);
-        
+
+        // ジャークはIndependentEMGJointControllerから取得
+        float shoulderJerk = jointController != null ? jointController.Joint1Jerk : 0f;
+        float elbowJerk = jointController != null ? jointController.Joint2Jerk : 0f;
+
         // 誤差計算
         float positionError = Vector3.Distance(currentPosition, currentTargetPosition);
         float jointSpaceError = CalculateJointSpaceError(currentJointAngles);
-        
+
         // 最適経路長(直線距離)
         float optimalPathLength = Vector3.Distance(trialStartPosition, currentTargetPosition);
         float pathEfficiency = optimalPathLength > 0 ? optimalPathLength / Mathf.Max(actualPathLength, 0.001f) : 0f;
-        
+
+        // 試行開始からの経過時間（0～movementDuration秒の範囲）
+        float trialElapsedTime = Time.time - trialStartTime;
+
         // データ構造体を作成
         MotionData data = new MotionData
         {
-            timestamp = Time.time,
+            timestamp = trialElapsedTime, // 試行開始からの相対時間
             trialNumber = trialCount,
-            
+
             targetShoulderPitch = targetShoulderPitch,
             targetElbowAngle = targetElbowAngle,
             targetPosition = currentTargetPosition,
-            
+
             actualPosition = currentPosition,
             actualShoulderPitch = currentJointAngles[0],
             actualElbowAngle = currentJointAngles[1],
-            
+
             positionError = positionError,
             jointSpaceError = jointSpaceError,
-            
+
             shoulderPitchVelocity = currentJointVelocities[0],
             elbowVelocity = currentJointVelocities[1],
-            shoulderPitchJerk = jerks[0],
-            elbowJerk = jerks[1],
-            
+            shoulderPitchJerk = shoulderJerk,
+            elbowJerk = elbowJerk,
+
             pathLength = actualPathLength,
             optimalPathLength = optimalPathLength,
             pathEfficiency = pathEfficiency
         };
-        
+
         dataBuffer.Add(data);
-        
+
         lastPosition = currentPosition;
-        lastJointVelocities = currentJointVelocities;
+        lastJointAngles = currentJointAngles;
     }
     
     /// <summary>
@@ -642,37 +669,25 @@ public class MarkerTask : MonoBehaviour
     float[] CalculateJointVelocities(float[] currentAngles)
     {
         float[] velocities = new float[2]; // 2DOF
-        float dt = Time.deltaTime;
-        
-        if (dt > 0 && lastJointVelocities != null && lastJointVelocities.Length >= 2)
+        float dt = Mathf.Max(Time.deltaTime, MIN_DELTA_TIME);
+
+        if (lastJointAngles != null && lastJointAngles.Length >= 2)
         {
             for (int i = 0; i < 2; i++)
             {
-                velocities[i] = (currentAngles[i] - lastJointVelocities[i]) / dt;
+                float velocity = (currentAngles[i] - lastJointAngles[i]) / dt;
+
+                // 異常値チェック
+                if (float.IsNaN(velocity) || float.IsInfinity(velocity))
+                {
+                    velocity = 0f;
+                }
+
+                velocities[i] = velocity;
             }
         }
-        
+
         return velocities;
-    }
-    
-    /// <summary>
-    /// ジャーク(加速度の変化率)を計算 (2DOF版)
-    /// </summary>
-    float[] CalculateJerks(float[] currentVelocities, float[] lastVelocities)
-    {
-        float[] jerks = new float[2]; // 2DOF
-        float dt = Time.deltaTime;
-        
-        if (dt > 0 && lastVelocities != null && lastVelocities.Length >= 2)
-        {
-            for (int i = 0; i < 2; i++)
-            {
-                float acceleration = (currentVelocities[i] - lastVelocities[i]) / dt;
-                jerks[i] = Mathf.Abs(acceleration); // 絶対値を使用
-            }
-        }
-        
-        return jerks;
     }
     
     /// <summary>
@@ -729,7 +744,28 @@ public class MarkerTask : MonoBehaviour
     /// </summary>
     string GetDataFolderPath()
     {
-        return Path.Combine(Application.dataPath, "..", dataFolderName);
+        string basePath;
+
+        switch (saveDestination)
+        {
+            case SaveDestination.KP:
+                basePath = Path.Combine(Application.dataPath, @"..\datafolder\KP");
+                break;
+            case SaveDestination.KR:
+                basePath = Path.Combine(Application.dataPath, @"..\datafolder\KR");
+                break;
+            default:
+                basePath = Path.Combine(Application.dataPath, @"..\datafolder\KP");
+                break;
+        }
+
+        // サブフォルダ名が指定されている場合は結合
+        if (!string.IsNullOrEmpty(subFolderName))
+        {
+            basePath = Path.Combine(basePath, subFolderName);
+        }
+
+        return basePath;
     }
     
     public int GetTrialCount() => trialCount;
@@ -780,7 +816,7 @@ public class MarkerTask : MonoBehaviour
             }
             else
             {
-                GUILayout.Label("Marker: NULL ❌", GUI.skin.box);
+                GUILayout.Label("Marker: NULL ", GUI.skin.box);
             }
         }
 

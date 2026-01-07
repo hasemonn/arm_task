@@ -10,7 +10,7 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{2470A643-205B-B13E-9BFF-2A6ABAB65E07}</ProjectGuid>
+    <ProjectGuid>{E4E5D9DC-1020-BD51-3070-5935BB0AD5EC}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <AssemblyName>VoiceSDK.Dictation.Editor</AssemblyName>
@@ -55,6 +55,7 @@
     <UnityVersion>2022.3.60f1</UnityVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Analyzer Include="C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Extensions\Microsoft\Visual Studio Tools for Unity\Analyzers\Microsoft.Unity.Analyzers.dll" />
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.60f1\Editor\Data\Tools\Unity.SourceGenerators\Unity.SourceGenerators.dll" />
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.60f1\Editor\Data\Tools\Unity.SourceGenerators\Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
@@ -970,23 +971,23 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="VoiceSDK.Dictation.Runtime.csproj">
-      <Project>{95969085-06CA-2276-E8B6-71ABA5B18DD2}</Project>
+      <Project>{ECF8955B-7483-38E4-03FF-E162963767F1}</Project>
       <Name>VoiceSDK.Dictation.Runtime</Name>
     </ProjectReference>
     <ProjectReference Include="Facebook.Wit.Dictation.csproj">
-      <Project>{737D94FA-DC92-A2B2-C6B2-2A8ED7EED437}</Project>
+      <Project>{A1E1707E-7364-B725-2DDC-BC8B1CB3464A}</Project>
       <Name>Facebook.Wit.Dictation</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.WitAi.Editor.csproj">
-      <Project>{54F10D53-88CE-4E36-2F0C-0413DB5889D7}</Project>
+      <Project>{FBB7FD11-D51F-8CF5-3319-63D935BA2CB3}</Project>
       <Name>Meta.WitAi.Editor</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.WitAi.csproj">
-      <Project>{002D891B-CD56-9212-57DF-8157C69A4386}</Project>
+      <Project>{2FCC3D1D-191D-D635-9B8E-39775A8C1145}</Project>
       <Name>Meta.WitAi</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.WitAi.Lib.csproj">
-      <Project>{E8C89A96-1901-5651-AF85-B66F670DD2CF}</Project>
+      <Project>{6D3887E4-53DA-9716-F345-751C3346532C}</Project>
       <Name>Meta.WitAi.Lib</Name>
     </ProjectReference>
   </ItemGroup>

@@ -10,7 +10,7 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{0E043024-3D8D-15C5-F8D7-9ED3A5AEE1AE}</ProjectGuid>
+    <ProjectGuid>{CFB07EF5-ABFF-00A7-FA8F-4A89A44FAA01}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <AssemblyName>Oculus.Spatializer.Editor</AssemblyName>
@@ -55,6 +55,7 @@
     <UnityVersion>2022.3.60f1</UnityVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Analyzer Include="C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Extensions\Microsoft\Visual Studio Tools for Unity\Analyzers\Microsoft.Unity.Analyzers.dll" />
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.60f1\Editor\Data\Tools\Unity.SourceGenerators\Unity.SourceGenerators.dll" />
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.60f1\Editor\Data\Tools\Unity.SourceGenerators\Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
@@ -974,7 +975,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="Oculus.Spatializer.csproj">
-      <Project>{C9BC57C6-DFAD-6E89-D4B7-41AE23CE70D8}</Project>
+      <Project>{492714B7-B491-DCD9-8753-32663874F71C}</Project>
       <Name>Oculus.Spatializer</Name>
     </ProjectReference>
   </ItemGroup>

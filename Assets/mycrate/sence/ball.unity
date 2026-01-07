@@ -695,8 +695,9 @@ MonoBehaviour:
   movementDuration: 3
   freezeDuration: 1
   markerSize: 0.05
-  enableLogging: 0
-  dataFolderName: ExperimentData
+  enableLogging: 1
+  saveDestination: 0
+  subFolderName: pre1
 --- !u!1 &455496909
 GameObject:
   m_ObjectHideFlags: 0
@@ -763,8 +764,8 @@ MonoBehaviour:
   joint1ExtendChannel: 2
   joint2BendChannel: 3
   joint2ExtendChannel: 4
-  activationThreshold: 5
-  dominanceThreshold: 10
+  activationThreshold: 0
+  dominanceThreshold: 0
   showDebugGUI: 1
   logControlValues: 0
 --- !u!1 &585804338
@@ -1464,8 +1465,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7408b206688a14645977eb932298f52c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  jointController: {fileID: 0}
   shoulderJoint: {fileID: 1396408851}
   elbowJoint: {fileID: 1999911902}
+  endEffector: {fileID: 0}
   upperArmLength: 0.2
   forearmLength: 0.2
   shoulderPitchOffset: 25

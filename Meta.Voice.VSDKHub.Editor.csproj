@@ -10,7 +10,7 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace>Meta.Voice.VSDKHub</RootNamespace>
-    <ProjectGuid>{0F2B4BDF-BF13-A92B-B6DE-728C23EF4425}</ProjectGuid>
+    <ProjectGuid>{7CCEE83E-72F9-A4E3-B908-4C3ECBF676AF}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <AssemblyName>Meta.Voice.VSDKHub.Editor</AssemblyName>
@@ -55,6 +55,7 @@
     <UnityVersion>2022.3.60f1</UnityVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Analyzer Include="C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Extensions\Microsoft\Visual Studio Tools for Unity\Analyzers\Microsoft.Unity.Analyzers.dll" />
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.60f1\Editor\Data\Tools\Unity.SourceGenerators\Unity.SourceGenerators.dll" />
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.60f1\Editor\Data\Tools\Unity.SourceGenerators\Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
@@ -969,15 +970,15 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="Meta.Voice.Hub.Editor.csproj">
-      <Project>{0469B207-4262-853C-51AB-5F43F5FD1166}</Project>
+      <Project>{C96F5EA4-86A4-B363-2128-7746D5F9F117}</Project>
       <Name>Meta.Voice.Hub.Editor</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.Voice.Hub.Runtime.csproj">
-      <Project>{A0CAC193-C0FB-A04A-9476-58EA50A7AADE}</Project>
+      <Project>{72E37E28-1C6D-604A-E278-37F002545CF2}</Project>
       <Name>Meta.Voice.Hub.Runtime</Name>
     </ProjectReference>
     <ProjectReference Include="VoiceSDK.Telemetry.csproj">
-      <Project>{96909E3B-BE60-3C91-7FF4-799EF3800056}</Project>
+      <Project>{39BBF6E2-D261-FDE5-2C5F-FC6BECCAF258}</Project>
       <Name>VoiceSDK.Telemetry</Name>
     </ProjectReference>
   </ItemGroup>

@@ -15,11 +15,17 @@ using System.Runtime.InteropServices;
 public class ContinuousVibrationFeedback : MonoBehaviour
 {
     [Header("Arm References")]
-    [Tooltip("肩関節のTransform")]
+    [Tooltip("IndependentEMGJointController（設定すると角度をここから取得）")]
+    public IndependentEMGJointController jointController;
+
+    [Tooltip("肩関節のTransform（jointControllerが未設定の場合に使用）")]
     public Transform shoulderJoint;
 
-    [Tooltip("肘関節のTransform")]
+    [Tooltip("肘関節のTransform（jointControllerが未設定の場合に使用）")]
     public Transform elbowJoint;
+
+    [Tooltip("手先のTransform（デバッグ表示用）")]
+    public Transform endEffector;
 
     [Header("Arm Parameters")]
     [Tooltip("上腕の長さ (m)")]
@@ -119,6 +125,17 @@ public class ContinuousVibrationFeedback : MonoBehaviour
     void Start()
     {
         InitializeUDP();
+
+        // jointControllerが未設定の場合、自動検索を試みる
+        if (jointController == null)
+        {
+            jointController = FindObjectOfType<IndependentEMGJointController>();
+            if (jointController != null)
+            {
+                Debug.Log("ContinuousVibrationFeedback: IndependentEMGJointController found automatically");
+            }
+        }
+
         Debug.Log("ContinuousVibrationFeedback initialized");
     }
 
@@ -133,8 +150,19 @@ public class ContinuousVibrationFeedback : MonoBehaviour
         currentShoulderPitch = GetShoulderPitchAngle();
         currentElbowAngle = GetElbowAngle();
 
-        // Forward Kinematicsで手先位置を計算（デバッグ用）
-        currentHandPosition = CalculateForwardKinematics(currentShoulderPitch, currentElbowAngle);
+        // 手先位置を取得（デバッグ用）
+        if (jointController != null && jointController.EndEffector != null)
+        {
+            // jointControllerがある場合は実際のEndEffector位置を使用
+            Transform baseTransform = jointController.BaseObject != null ?
+                jointController.BaseObject : transform;
+            currentHandPosition = baseTransform.InverseTransformPoint(jointController.EndEffector.position);
+        }
+        else
+        {
+            // Forward Kinematicsで手先位置を計算
+            currentHandPosition = CalculateForwardKinematics(currentShoulderPitch, currentElbowAngle);
+        }
 
         // 振動パターンを計算
         CalculateVibrationPattern(currentShoulderPitch, currentElbowAngle);
@@ -210,17 +238,24 @@ public class ContinuousVibrationFeedback : MonoBehaviour
     /// </summary>
     private bool ValidateReferences()
     {
+        // jointControllerが設定されている場合はそれを使用
+        if (jointController != null)
+        {
+            return true;
+        }
+
+        // jointControllerがない場合は、Transformを直接使用
         if (shoulderJoint == null)
         {
             if (showDebugLog)
-                Debug.LogWarning("Shoulder joint is not assigned!");
+                Debug.LogWarning("Shoulder joint is not assigned and jointController is null!");
             return false;
         }
 
         if (elbowJoint == null)
         {
             if (showDebugLog)
-                Debug.LogWarning("Elbow joint is not assigned!");
+                Debug.LogWarning("Elbow joint is not assigned and jointController is null!");
             return false;
         }
 
@@ -232,6 +267,14 @@ public class ContinuousVibrationFeedback : MonoBehaviour
     /// </summary>
     private float GetShoulderPitchAngle()
     {
+        // jointControllerがある場合はそこから取得
+        if (jointController != null)
+        {
+            Vector2 jointAngles = jointController.GetJointAngles();
+            return jointAngles.x; // joint1 = shoulderPitch
+        }
+
+        // jointControllerがない場合はTransformから取得
         if (shoulderJoint == null) return 0f;
 
         // localRotation.eulerAngles.xから取得
@@ -249,6 +292,14 @@ public class ContinuousVibrationFeedback : MonoBehaviour
     /// </summary>
     private float GetElbowAngle()
     {
+        // jointControllerがある場合はそこから取得
+        if (jointController != null)
+        {
+            Vector2 jointAngles = jointController.GetJointAngles();
+            return jointAngles.y; // joint2 = elbowAngle
+        }
+
+        // jointControllerがない場合はTransformから取得
         if (elbowJoint == null) return 0f;
 
         // localRotation.eulerAngles.zから取得
@@ -479,9 +530,33 @@ public class ContinuousVibrationFeedback : MonoBehaviour
     /// </summary>
     private void DrawArm()
     {
-        Vector3 shoulderPos = shoulderJoint.position;
-        Vector3 elbowPos = elbowJoint != null ? elbowJoint.position : shoulderPos;
-        Vector3 handPos = shoulderPos + shoulderJoint.rotation * currentHandPosition;
+        Vector3 shoulderPos, elbowPos, handPos;
+
+        // jointControllerがある場合は実際のTransformを使用
+        if (jointController != null)
+        {
+            if (jointController.Joint1 != null)
+                shoulderPos = jointController.Joint1.position;
+            else
+                shoulderPos = transform.position;
+
+            if (jointController.Joint2 != null)
+                elbowPos = jointController.Joint2.position;
+            else
+                elbowPos = shoulderPos;
+
+            if (jointController.EndEffector != null)
+                handPos = jointController.EndEffector.position;
+            else
+                handPos = shoulderPos + transform.rotation * currentHandPosition;
+        }
+        else
+        {
+            // Transformから直接取得
+            shoulderPos = shoulderJoint != null ? shoulderJoint.position : transform.position;
+            elbowPos = elbowJoint != null ? elbowJoint.position : shoulderPos;
+            handPos = shoulderPos + (shoulderJoint != null ? shoulderJoint.rotation : transform.rotation) * currentHandPosition;
+        }
 
         // 上腕
         Gizmos.color = Color.white;
@@ -501,10 +576,28 @@ public class ContinuousVibrationFeedback : MonoBehaviour
     /// </summary>
     private void DrawVibrationGrid()
     {
-        Vector3 shoulderPos = shoulderJoint.position;
+        Vector3 shoulderPos;
+        Quaternion shoulderRot;
+
+        // 基準位置を取得
+        if (jointController != null && jointController.Joint1 != null)
+        {
+            shoulderPos = jointController.Joint1.position;
+            shoulderRot = jointController.Joint1.rotation;
+        }
+        else if (shoulderJoint != null)
+        {
+            shoulderPos = shoulderJoint.position;
+            shoulderRot = shoulderJoint.rotation;
+        }
+        else
+        {
+            shoulderPos = transform.position;
+            shoulderRot = transform.rotation;
+        }
 
         // 背中のグリッド位置（肩の後ろ）
-        Vector3 gridCenter = shoulderPos + shoulderJoint.rotation * new Vector3(0, 0, -0.2f);
+        Vector3 gridCenter = shoulderPos + shoulderRot * new Vector3(0, 0, -0.2f);
 
         float cellSize = 0.08f;
 
@@ -522,7 +615,7 @@ public class ContinuousVibrationFeedback : MonoBehaviour
                     0
                 );
 
-                cellPos = shoulderJoint.rotation * (cellPos - gridCenter) + gridCenter;
+                cellPos = shoulderRot * (cellPos - gridCenter) + gridCenter;
 
                 // 振動強度に応じて色とサイズを変更
                 float intensity = vibrationIntensities[vibratorIndex] / 255f;

@@ -10,7 +10,7 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{002D891B-CD56-9212-57DF-8157C69A4386}</ProjectGuid>
+    <ProjectGuid>{2FCC3D1D-191D-D635-9B8E-39775A8C1145}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <AssemblyName>Meta.WitAi</AssemblyName>
@@ -55,6 +55,7 @@
     <UnityVersion>2022.3.60f1</UnityVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Analyzer Include="C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Extensions\Microsoft\Visual Studio Tools for Unity\Analyzers\Microsoft.Unity.Analyzers.dll" />
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.60f1\Editor\Data\Tools\Unity.SourceGenerators\Unity.SourceGenerators.dll" />
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.60f1\Editor\Data\Tools\Unity.SourceGenerators\Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
@@ -1037,23 +1038,23 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="Meta.WitAi.Lib.csproj">
-      <Project>{E8C89A96-1901-5651-AF85-B66F670DD2CF}</Project>
+      <Project>{6D3887E4-53DA-9716-F345-751C3346532C}</Project>
       <Name>Meta.WitAi.Lib</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.WitAi.Conduit.csproj">
-      <Project>{3B52409E-656E-7AC4-8BB0-5BB1872005EA}</Project>
+      <Project>{9E522938-C062-5F73-166C-F79BA979B603}</Project>
       <Name>Meta.WitAi.Conduit</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.VoiceSDK.Mic.Common.csproj">
-      <Project>{9A8E34F6-BD8B-6237-8945-450FE121B069}</Project>
+      <Project>{4E5EF10A-F82B-7F5A-354D-C7D12B611D4D}</Project>
       <Name>Meta.VoiceSDK.Mic.Common</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.VoiceSDK.Mic.Other.csproj">
-      <Project>{80180101-9DE4-FB6F-D1E7-556C03884DDF}</Project>
+      <Project>{B8DCE79F-3716-0F01-1CD8-B563048E75B2}</Project>
       <Name>Meta.VoiceSDK.Mic.Other</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.VoiceSDK.Mic.WebGL.csproj">
-      <Project>{33A24D98-11E5-5533-7FBF-16E1993ED7EB}</Project>
+      <Project>{C9701C79-2AB9-F908-2F15-7880DA975621}</Project>
       <Name>Meta.VoiceSDK.Mic.WebGL</Name>
     </ProjectReference>
   </ItemGroup>
