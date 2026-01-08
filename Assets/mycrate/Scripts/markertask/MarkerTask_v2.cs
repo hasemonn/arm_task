@@ -780,7 +780,7 @@ public class MarkerTask : MonoBehaviour
             }
             else
             {
-                GUILayout.Label("Marker: NULL ❌", GUI.skin.box);
+                GUILayout.Label("Marker: NULL ", GUI.skin.box);
             }
         }
 
