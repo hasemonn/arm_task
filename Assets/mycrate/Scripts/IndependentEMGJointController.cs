@@ -51,8 +51,8 @@ public class IndependentEMGJointController : MonoBehaviour
     [Header("Joint Control Settings")]
     [SerializeField, Range(0.1f, 5f)] private float speedMultiplier = 1f;
     [SerializeField, Range(1f, 180f)] private float maxRotationSpeed = 90f; // degrees per second
-    [SerializeField, Range(-25f, 0f)] private float joint1MinAngle = -20f;
-    [SerializeField, Range(0f, 75f)] private float joint1MaxAngle = 100f;
+    [SerializeField, Range(-30f, 0f)] private float joint1MinAngle = -20f;
+    [SerializeField, Range(0f, 80f)] private float joint1MaxAngle = 100f;
     [SerializeField, Range(-20f, 0f)] private float joint2MinAngle = -20f;
     [SerializeField, Range(0f, 160f)] private float joint2MaxAngle = 160f;
 

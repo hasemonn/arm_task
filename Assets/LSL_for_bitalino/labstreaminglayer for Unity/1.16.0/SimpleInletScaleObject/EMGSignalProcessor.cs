@@ -88,17 +88,6 @@ namespace LSL4Unity.Samples.SimpleInlet
 
         void Update()
         {
-            if (emgSource == null)
-            {
-                Debug.LogWarning("[EMGSignalProcessor] emgSource is null!");
-                return;
-            }
-
-            if (!emgSource.IsConnected())
-            {
-                Debug.LogWarning("[EMGSignalProcessor] emgSource is not connected!");
-                return;
-            }
 
             // 生データ取得(Ch1-4)
             for (int ch = 1; ch <= 4; ch++)

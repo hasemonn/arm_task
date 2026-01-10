@@ -257,20 +257,14 @@ namespace LSL4Unity.Samples.SimpleInlet
         {
             // BITalino: Ch1-4 → latestValues[1-4]にマッピング
             int index = channel;  // Ch1 → latestValues[1], Ch2 → latestValues[2], ...
-            if (!isConnected)
-            {
-                Debug.LogWarning($"[GetChannelValue] Not connected! Returning 0 for Ch{channel}");
-                return 0f;
-            }
+
 
             if (index >= 1 && index <= 4 && index < channelCount)
             {
-                Debug.Log($"[GetChannelValue] Ch{channel} → latestValues[{index}] = {latestValues[index]:F6}");
                 return latestValues[index];
             }
             else
             {
-                Debug.LogWarning($"[GetChannelValue] Invalid channel {channel} or index {index} (channelCount={channelCount})");
                 return 0f;
             }
         }

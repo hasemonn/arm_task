@@ -45,13 +45,21 @@ public class MarkerTask : MonoBehaviour
 
     [Header("Task Settings")]
     public int totalTrials = 10;
+    public float initialFreezeDuration = 1.0f; // 初期位置固定時間
     public float movementDuration = 3.0f;
-    public float freezeDuration = 1.0f;
+    public float freezeDuration = 1.0f; // ターゲット位置固定時間
     public float markerSize = 0.05f;
     
     [Header("Data Logging")]
     public bool enableLogging = true;
-    public string dataFolderName = "ExperimentData";
+    public SaveDestination saveDestination = SaveDestination.KP;
+    public string subFolderName = "";
+
+    public enum SaveDestination
+    {
+        KP,
+        KR
+    }
     
     // 現在のターゲット情報 - 2DOF
     private Vector3 currentTargetPosition;
@@ -60,11 +68,16 @@ public class MarkerTask : MonoBehaviour
     
     // マーカーオブジェクト
     private GameObject currentMarker;
+    public GameObject CurrentMarker => currentMarker; // KR_VibrationFeedbackから参照できるように
     
     // タスク進行状態
     private int trialCount = 0;
     private bool taskRunning = false;
     private List<int> trialOrder;
+
+    // KR Feedback用フラグ（KR_VibrationFeedbackがなくてもエラーにならない）
+    private bool shouldProvideKRFeedback = false;
+    public bool ShouldProvideKRFeedback => shouldProvideKRFeedback;
 
     // 試行ごとのサマリーデータ
     private List<TrialSummary> trialSummaries = new List<TrialSummary>();
@@ -78,10 +91,17 @@ public class MarkerTask : MonoBehaviour
     // データロギング
     private List<MotionData> dataBuffer = new List<MotionData>();
     private Vector3 lastPosition;
-    private float[] lastJointVelocities;
+    private float[] lastJointAngles;
     private float actualPathLength = 0f;
     private Vector3 trialStartPosition;
     private float trialStartTime;
+    private float lastLogTime = 0f;
+
+    // 微分計算の最小時間間隔（数値的破綻を防ぐ）
+    private const float MIN_DELTA_TIME = 0.0001f;
+
+    // データサンプリング周波数: 1000Hz
+    private const float LOG_INTERVAL = 0.001f; // 1ms = 1000Hz
     
     [System.Serializable]
     public struct TrialSummary
@@ -96,7 +116,10 @@ public class MarkerTask : MonoBehaviour
         public float averagePositionError;
         public float averageJointSpaceError;
         public float peakJerk;
-        public bool completed; // 試行が完了したかどうか
+        public bool taskSuccess; // 3D距離0.05以内ならtrue
+        public float finalDistance; // 最終的な3D距離
+        public float averageFBIntensity; // KR条件時の平均FB強度
+        public int finalFBVibrator; // KR条件時の最終振動子番号
     }
 
     [System.Serializable]
@@ -104,36 +127,44 @@ public class MarkerTask : MonoBehaviour
     {
         public float timestamp;
         public int trialNumber;
-        
+
         // ターゲット情報(FK計算済み) - 2DOF
         public float targetShoulderPitch;
         public float targetElbowAngle;
         public Vector3 targetPosition;
-        
+
         // 実際の状態 - 2DOF
         public Vector3 actualPosition;
         public float actualShoulderPitch;
         public float actualElbowAngle;
-        
+
         // 誤差
         public float positionError; // デカルト空間での誤差
         public float jointSpaceError; // 関節空間での誤差
-        
+
         // 速度とジャーク - 2DOF
         public float shoulderPitchVelocity;
         public float elbowVelocity;
         public float shoulderPitchJerk;
         public float elbowJerk;
-        
+
         // 軌道情報
         public float pathLength; // 累積移動距離
         public float optimalPathLength; // 最短距離
         public float pathEfficiency; // 効率 (0-1)
+
+        // KR Feedback情報（Summary集計用、Detailedには含めない）
+        public int fbVibrator; // 振動子番号 (0=なし, 1-9)
+        public int fbIntensity; // 振動強度 (0,2,4,6,8,10)
     }
     
+    // KR Feedback参照（存在する場合のみ）
+    private UDPSender krFeedback;
+    private bool shouldLogKRFeedback = false;
+
     void Start()
     {
-        lastJointVelocities = new float[2];
+        lastJointAngles = new float[2];
 
         if (jointController == null)
         {
@@ -149,6 +180,17 @@ public class MarkerTask : MonoBehaviour
         {
             countdownText.gameObject.SetActive(false);
         }
+
+        // KR Feedbackの有無をチェック
+        krFeedback = FindObjectOfType<UDPSender>();
+
+        // KRがアタッチされている、またはKRフォルダに保存する場合にFB強度を記録
+        shouldLogKRFeedback = (krFeedback != null) || (saveDestination == SaveDestination.KR);
+
+        if (shouldLogKRFeedback)
+        {
+            Debug.Log("MarkerTask: KR Feedback logging enabled");
+        }
     }
     
     void Update()
@@ -157,7 +199,13 @@ public class MarkerTask : MonoBehaviour
 
         if (enableLogging && ball != null)
         {
-            LogData();
+            // 1000Hz (1ms間隔) でデータをサンプリング
+            float currentTime = Time.time;
+            if (currentTime - lastLogTime >= LOG_INTERVAL)
+            {
+                LogData();
+                lastLogTime = currentTime;
+            }
         }
     }
 
@@ -166,12 +214,26 @@ public class MarkerTask : MonoBehaviour
     {
         if (taskRunning) return;
 
-        // 順番通りに提示（ランダムなし）
+        // パターンをランダムに提示
         trialOrder = new List<int>();
         for (int i = 0; i < totalTrials; i++)
         {
             trialOrder.Add(i);
         }
+
+        // Fisher-Yatesシャッフル
+        System.Random rng = new System.Random();
+        int n = trialOrder.Count;
+        while (n > 1)
+        {
+            n--;
+            int k = rng.Next(n + 1);
+            int temp = trialOrder[k];
+            trialOrder[k] = trialOrder[n];
+            trialOrder[n] = temp;
+        }
+
+        Debug.Log($"Trial order (randomized): {string.Join(", ", trialOrder)}");
 
         trialCount = 0;
         trialSummaries.Clear();
@@ -241,9 +303,11 @@ public class MarkerTask : MonoBehaviour
         trialCount = trialIndex + 1;
         statusMessage = $"Trial {trialCount}/{totalTrials}";
 
+        // アームをリセット
         ResetArmPosition();
         await UniTask.Delay(TimeSpan.FromSeconds(0.5f), cancellationToken: cancellationToken);
 
+        // ターゲットマーカーを生成（黄色）
         GenerateTargetForTrial(trialOrder[trialIndex]);
 
         Debug.Log($"[Trial{trialCount}] After GenerateTargetForTrial - Marker status: {(currentMarker != null ? "VALID" : "NULL")}");
@@ -256,21 +320,48 @@ public class MarkerTask : MonoBehaviour
             return;
         }
 
+        // タスク開始フラグを立てる（KR FBが動作するように）
+        taskRunning = true;
         float trialStartTime = Time.time;
 
-        taskRunning = true;
+        // 初期位置で固定（黄色マーカー）
+        if (jointController != null)
+        {
+            jointController.FreezeArm();
+        }
+        statusMessage = $"Trial {trialCount}/{totalTrials} - Initial position (Ready)";
+        await UniTask.Delay(TimeSpan.FromSeconds(initialFreezeDuration), cancellationToken: cancellationToken);
+
+        // 固定解除 - 動作開始
+        if (jointController != null)
+        {
+            jointController.UnfreezeArm();
+        }
+
+        // マーカーを緑に変更（動作時）
+        ChangeMarkerColor(Color.green);
+
         statusMessage = $"Trial {trialCount}/{totalTrials} - Move to target";
         await UniTask.Delay(TimeSpan.FromSeconds(movementDuration), cancellationToken: cancellationToken);
 
-        // マーカーを赤に変更（固定時）
+        // マーカーを赤に変更（ターゲット位置固定時）
         ChangeMarkerColor(Color.red);
 
         if (jointController != null)
         {
             jointController.FreezeArm();
         }
+
+        // KR Feedbackフラグを立てる（振動開始）
+        shouldProvideKRFeedback = true;
+        Debug.Log($"[Trial{trialCount}] KR Feedback Flag = TRUE (Freeze started)");
+
         statusMessage = $"Trial {trialCount}/{totalTrials} - Hold position";
         await UniTask.Delay(TimeSpan.FromSeconds(freezeDuration), cancellationToken: cancellationToken);
+
+        // KR Feedbackフラグを下げる（振動停止）
+        shouldProvideKRFeedback = false;
+        Debug.Log($"[Trial{trialCount}] KR Feedback Flag = FALSE (Freeze ended)");
 
         if (jointController != null)
         {
@@ -278,7 +369,13 @@ public class MarkerTask : MonoBehaviour
         }
 
         float movementTime = Time.time - trialStartTime;
-        SaveTrialSummary(trialIndex, movementTime);
+
+        // 最終的な3D距離を計算してタスク成功判定
+        Vector3 finalBallPos = ball != null ? ball.position : Vector3.zero;
+        float finalDistance = Vector3.Distance(finalBallPos, currentTargetPosition);
+        bool taskSuccess = finalDistance <= 0.05f;
+
+        SaveTrialSummary(trialIndex, movementTime, finalDistance, taskSuccess);
 
         if (currentMarker != null)
         {
@@ -444,10 +541,10 @@ public class MarkerTask : MonoBehaviour
         if (markerRenderer != null)
         {
             markerRenderer.material = new Material(Shader.Find("Standard"));
-            markerRenderer.material.color = Color.green;
+            markerRenderer.material.color = Color.yellow;
             markerRenderer.material.EnableKeyword("_EMISSION");
-            markerRenderer.material.SetColor("_EmissionColor", Color.green * 0.5f);
-            Debug.Log($"[P{patternIndex}] Marker material set to green");
+            markerRenderer.material.SetColor("_EmissionColor", Color.yellow * 0.5f);
+            Debug.Log($"[P{patternIndex}] Marker material set to yellow (initial)");
         }
         else
         {
@@ -463,12 +560,13 @@ public class MarkerTask : MonoBehaviour
         Debug.Log($"[P{patternIndex}] Marker creation complete. Final check: {(currentMarker != null ? "OK" : "NULL!")}");
 
         trialStartTime = Time.time;
+        lastLogTime = Time.time; // 1000Hzサンプリング用タイマーをリセット
         trialStartPosition = ball != null ? ball.position : Vector3.zero;
         actualPathLength = 0f;
         dataBuffer.Clear();
     }
 
-    void SaveTrialSummary(int patternIndex, float movementTime)
+    void SaveTrialSummary(int patternIndex, float movementTime, float finalDistance, bool taskSuccess)
     {
         if (dataBuffer.Count == 0) return;
 
@@ -476,6 +574,9 @@ public class MarkerTask : MonoBehaviour
         float totalPositionError = 0f;
         float totalJointSpaceError = 0f;
         float peakJerk = 0f;
+        float totalFBIntensity = 0f;
+        int fbSampleCount = 0;
+        int finalFBVibrator = 0;
 
         foreach (var data in dataBuffer)
         {
@@ -487,10 +588,20 @@ public class MarkerTask : MonoBehaviour
                 Mathf.Abs(data.elbowJerk)
             );
             peakJerk = Mathf.Max(peakJerk, maxJerkThisFrame);
+
+            // KR条件時のFB強度を集計（振動があるデータのみ）
+            if (shouldLogKRFeedback && data.fbVibrator > 0)
+            {
+                totalFBIntensity += data.fbIntensity;
+                fbSampleCount++;
+                // 最後のFB振動子を更新（FB期間中の最後）
+                finalFBVibrator = data.fbVibrator;
+            }
         }
 
         float avgPositionError = totalPositionError / dataBuffer.Count;
         float avgJointSpaceError = totalJointSpaceError / dataBuffer.Count;
+        float avgFBIntensity = fbSampleCount > 0 ? totalFBIntensity / fbSampleCount : 0f;
 
         // 最適経路長(直線距離)
         float optimalPathLength = Vector3.Distance(trialStartPosition, currentTargetPosition);
@@ -510,14 +621,17 @@ public class MarkerTask : MonoBehaviour
             averagePositionError = avgPositionError,
             averageJointSpaceError = avgJointSpaceError,
             peakJerk = peakJerk,
-            completed = true
+            taskSuccess = taskSuccess,
+            finalDistance = finalDistance,
+            averageFBIntensity = avgFBIntensity,
+            finalFBVibrator = finalFBVibrator
         };
 
         trialSummaries.Add(summary);
-        SaveTrialDetailedMotionCSV(trialCount);
+        SaveTrialDetailedMotionCSV(trialCount, patternIndex);
     }
 
-    void SaveTrialDetailedMotionCSV(int trialNumber)
+    void SaveTrialDetailedMotionCSV(int trialNumber, int patternIndex)
     {
         if (dataBuffer.Count == 0) return;
 
@@ -529,10 +643,12 @@ public class MarkerTask : MonoBehaviour
         }
 
         string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        string filename = $"DetailedMotion_Trial{trialNumber:D2}_{timestamp}.csv";
+        string filename = $"Trial{trialNumber:D2}_Pattern{(patternIndex + 1):D2}_{timestamp}.csv";
         string filepath = Path.Combine(folderPath, filename);
 
         StringBuilder csv = new StringBuilder();
+
+        // DetailedにはFB情報を含めない（Summaryのみ）
         csv.AppendLine("Timestamp,TrialNumber," +
                       "TargetShoulderPitch,TargetElbowAngle," +
                       "TargetPosX,TargetPosY,TargetPosZ," +
@@ -566,57 +682,75 @@ public class MarkerTask : MonoBehaviour
     void LogData()
     {
         Vector3 currentPosition = ball.position;
-        
+
         // 移動距離を累積
         if (lastPosition != Vector3.zero)
         {
             actualPathLength += Vector3.Distance(currentPosition, lastPosition);
         }
-        
-        // 現在の関節角度を取得(簡易版 - 実際のジョイント角度に置き換えてください)
+
+        // 現在の関節角度を取得
         float[] currentJointAngles = GetCurrentJointAngles();
         float[] currentJointVelocities = CalculateJointVelocities(currentJointAngles);
-        float[] jerks = CalculateJerks(currentJointVelocities, lastJointVelocities);
-        
+
+        // ジャークはIndependentEMGJointControllerから取得
+        float shoulderJerk = jointController != null ? jointController.Joint1Jerk : 0f;
+        float elbowJerk = jointController != null ? jointController.Joint2Jerk : 0f;
+
         // 誤差計算
         float positionError = Vector3.Distance(currentPosition, currentTargetPosition);
         float jointSpaceError = CalculateJointSpaceError(currentJointAngles);
-        
+
         // 最適経路長(直線距離)
         float optimalPathLength = Vector3.Distance(trialStartPosition, currentTargetPosition);
         float pathEfficiency = optimalPathLength > 0 ? optimalPathLength / Mathf.Max(actualPathLength, 0.001f) : 0f;
-        
+
+        // 試行開始からの経過時間（0～movementDuration秒の範囲）
+        float trialElapsedTime = Time.time - trialStartTime;
+
+        // KR Feedback情報を取得（KR FBフラグが立っている期間のみ）
+        int fbVibrator = 0;
+        int fbIntensity = 0;
+        if (shouldLogKRFeedback && shouldProvideKRFeedback && krFeedback != null)
+        {
+            fbVibrator = krFeedback.CurrentVibrator;
+            fbIntensity = krFeedback.CurrentIntensity;
+        }
+
         // データ構造体を作成
         MotionData data = new MotionData
         {
-            timestamp = Time.time,
+            timestamp = trialElapsedTime, // 試行開始からの相対時間
             trialNumber = trialCount,
-            
+
             targetShoulderPitch = targetShoulderPitch,
             targetElbowAngle = targetElbowAngle,
             targetPosition = currentTargetPosition,
-            
+
             actualPosition = currentPosition,
             actualShoulderPitch = currentJointAngles[0],
             actualElbowAngle = currentJointAngles[1],
-            
+
             positionError = positionError,
             jointSpaceError = jointSpaceError,
-            
+
             shoulderPitchVelocity = currentJointVelocities[0],
             elbowVelocity = currentJointVelocities[1],
-            shoulderPitchJerk = jerks[0],
-            elbowJerk = jerks[1],
-            
+            shoulderPitchJerk = shoulderJerk,
+            elbowJerk = elbowJerk,
+
             pathLength = actualPathLength,
             optimalPathLength = optimalPathLength,
-            pathEfficiency = pathEfficiency
+            pathEfficiency = pathEfficiency,
+
+            fbVibrator = fbVibrator,
+            fbIntensity = fbIntensity
         };
-        
+
         dataBuffer.Add(data);
-        
+
         lastPosition = currentPosition;
-        lastJointVelocities = currentJointVelocities;
+        lastJointAngles = currentJointAngles;
     }
     
     /// <summary>
@@ -642,37 +776,25 @@ public class MarkerTask : MonoBehaviour
     float[] CalculateJointVelocities(float[] currentAngles)
     {
         float[] velocities = new float[2]; // 2DOF
-        float dt = Time.deltaTime;
-        
-        if (dt > 0 && lastJointVelocities != null && lastJointVelocities.Length >= 2)
+        float dt = Mathf.Max(Time.deltaTime, MIN_DELTA_TIME);
+
+        if (lastJointAngles != null && lastJointAngles.Length >= 2)
         {
             for (int i = 0; i < 2; i++)
             {
-                velocities[i] = (currentAngles[i] - lastJointVelocities[i]) / dt;
+                float velocity = (currentAngles[i] - lastJointAngles[i]) / dt;
+
+                // 異常値チェック
+                if (float.IsNaN(velocity) || float.IsInfinity(velocity))
+                {
+                    velocity = 0f;
+                }
+
+                velocities[i] = velocity;
             }
         }
-        
+
         return velocities;
-    }
-    
-    /// <summary>
-    /// ジャーク(加速度の変化率)を計算 (2DOF版)
-    /// </summary>
-    float[] CalculateJerks(float[] currentVelocities, float[] lastVelocities)
-    {
-        float[] jerks = new float[2]; // 2DOF
-        float dt = Time.deltaTime;
-        
-        if (dt > 0 && lastVelocities != null && lastVelocities.Length >= 2)
-        {
-            for (int i = 0; i < 2; i++)
-            {
-                float acceleration = (currentVelocities[i] - lastVelocities[i]) / dt;
-                jerks[i] = Mathf.Abs(acceleration); // 絶対値を使用
-            }
-        }
-        
-        return jerks;
     }
     
     /// <summary>
@@ -707,17 +829,39 @@ public class MarkerTask : MonoBehaviour
         string filepath = Path.Combine(folderPath, filename);
 
         StringBuilder csv = new StringBuilder();
-        csv.AppendLine("TrialNumber,PatternName,TargetJoint1,TargetJoint2," +
-                      "MovementTime,PathLength,PathEfficiency," +
-                      "AveragePositionError,AverageJointSpaceError,PeakJerk,Completed");
 
-        foreach (var summary in trialSummaries)
+        // KR条件の場合はFB情報列を追加
+        if (shouldLogKRFeedback)
         {
-            csv.AppendLine($"{summary.trialNumber},{summary.patternName}," +
-                          $"{summary.targetJoint1},{summary.targetJoint2}," +
-                          $"{summary.movementTime},{summary.pathLength},{summary.pathEfficiency}," +
-                          $"{summary.averagePositionError},{summary.averageJointSpaceError}," +
-                          $"{summary.peakJerk},{summary.completed}");
+            csv.AppendLine("TrialNumber,PatternName,TargetJoint1,TargetJoint2," +
+                          "MovementTime,PathLength,PathEfficiency," +
+                          "AveragePositionError,AverageJointSpaceError,PeakJerk,TaskSuccess,FinalDistance," +
+                          "AverageFBIntensity,FinalFBVibrator");
+
+            foreach (var summary in trialSummaries)
+            {
+                csv.AppendLine($"{summary.trialNumber},{summary.patternName}," +
+                              $"{summary.targetJoint1},{summary.targetJoint2}," +
+                              $"{summary.movementTime},{summary.pathLength},{summary.pathEfficiency}," +
+                              $"{summary.averagePositionError},{summary.averageJointSpaceError}," +
+                              $"{summary.peakJerk},{summary.taskSuccess},{summary.finalDistance}," +
+                              $"{summary.averageFBIntensity},{summary.finalFBVibrator}");
+            }
+        }
+        else
+        {
+            csv.AppendLine("TrialNumber,PatternName,TargetJoint1,TargetJoint2," +
+                          "MovementTime,PathLength,PathEfficiency," +
+                          "AveragePositionError,AverageJointSpaceError,PeakJerk,TaskSuccess,FinalDistance");
+
+            foreach (var summary in trialSummaries)
+            {
+                csv.AppendLine($"{summary.trialNumber},{summary.patternName}," +
+                              $"{summary.targetJoint1},{summary.targetJoint2}," +
+                              $"{summary.movementTime},{summary.pathLength},{summary.pathEfficiency}," +
+                              $"{summary.averagePositionError},{summary.averageJointSpaceError}," +
+                              $"{summary.peakJerk},{summary.taskSuccess},{summary.finalDistance}");
+            }
         }
 
         File.WriteAllText(filepath, csv.ToString());
@@ -729,7 +873,28 @@ public class MarkerTask : MonoBehaviour
     /// </summary>
     string GetDataFolderPath()
     {
-        return Path.Combine(Application.dataPath, "..", dataFolderName);
+        string basePath;
+
+        switch (saveDestination)
+        {
+            case SaveDestination.KP:
+                basePath = Path.Combine(Application.dataPath, @"..\datafolder\KP");
+                break;
+            case SaveDestination.KR:
+                basePath = Path.Combine(Application.dataPath, @"..\datafolder\KR");
+                break;
+            default:
+                basePath = Path.Combine(Application.dataPath, @"..\datafolder\KP");
+                break;
+        }
+
+        // サブフォルダ名が指定されている場合は結合
+        if (!string.IsNullOrEmpty(subFolderName))
+        {
+            basePath = Path.Combine(basePath, subFolderName);
+        }
+
+        return basePath;
     }
     
     public int GetTrialCount() => trialCount;

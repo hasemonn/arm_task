@@ -622,7 +622,7 @@ GameObject:
   - component: {fileID: 444418178}
   - component: {fileID: 444418179}
   m_Layer: 0
-  m_Name: GameObject
+  m_Name: MakerTask
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -636,8 +636,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 444418176}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.7166254, y: 0.45894855, z: 0.0076469732}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0.7166254, y: 0.45894855, z: 0.007646974}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -655,7 +655,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cf98531de5d4a23479f1c6d0e3217f3a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  jointController: {fileID: 0}
+  jointController: {fileID: 455496912}
   shoulderJoint: {fileID: 1396408851}
   elbowJoint: {fileID: 1999911902}
   ball: {fileID: 257724092}
@@ -692,11 +692,13 @@ MonoBehaviour:
     joint2Angle: 14
   countdownText: {fileID: 1748051680}
   totalTrials: 10
+  initialFreezeDuration: 1
   movementDuration: 3
   freezeDuration: 1
   markerSize: 0.05
-  enableLogging: 0
-  dataFolderName: ExperimentData
+  enableLogging: 1
+  saveDestination: 0
+  subFolderName: p1
 --- !u!1 &455496909
 GameObject:
   m_ObjectHideFlags: 0
@@ -742,9 +744,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   controlMode: 1
-  manualJoint1Angle: 7
-  manualJoint2Angle: -0.7
-  emgProcessor: {fileID: 0}
+  manualJoint1Angle: 6.6
+  manualJoint2Angle: 0
+  emgProcessor: {fileID: 1808495977}
   joint1: {fileID: 1396408851}
   joint2: {fileID: 1999911902}
   baseObject: {fileID: 1321051929}
@@ -753,8 +755,8 @@ MonoBehaviour:
   endEffector: {fileID: 257724092}
   speedMultiplier: 1
   maxRotationSpeed: 90
-  joint1MinAngle: -25
-  joint1MaxAngle: 75
+  joint1MinAngle: -30
+  joint1MaxAngle: 80
   joint2MinAngle: 0
   joint2MaxAngle: 160
   joint1RotationAxis: {x: 1, y: 0, z: 0}
@@ -763,8 +765,8 @@ MonoBehaviour:
   joint1ExtendChannel: 2
   joint2BendChannel: 3
   joint2ExtendChannel: 4
-  activationThreshold: 5
-  dominanceThreshold: 10
+  activationThreshold: 0
+  dominanceThreshold: 0
   showDebugGUI: 1
   logControlValues: 0
 --- !u!1 &585804338
@@ -962,6 +964,11 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 4453513310108136, guid: 835e735ca71bf78459fb2cababd74112, type: 3}
   m_PrefabInstance: {fileID: 36945192}
   m_PrefabAsset: {fileID: 0}
+--- !u!137 &850233649 stripped
+SkinnedMeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 137619227449585070, guid: 835e735ca71bf78459fb2cababd74112, type: 3}
+  m_PrefabInstance: {fileID: 36945192}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &850463571
 GameObject:
   m_ObjectHideFlags: 0
@@ -996,6 +1003,11 @@ Transform:
 --- !u!1 &979254701 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1870938896605422, guid: 835e735ca71bf78459fb2cababd74112, type: 3}
+  m_PrefabInstance: {fileID: 1078317560}
+  m_PrefabAsset: {fileID: 0}
+--- !u!137 &979254702 stripped
+SkinnedMeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 137619227449585070, guid: 835e735ca71bf78459fb2cababd74112, type: 3}
   m_PrefabInstance: {fileID: 1078317560}
   m_PrefabAsset: {fileID: 0}
 --- !u!1 &998467117
@@ -1429,6 +1441,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1387188572}
+  - component: {fileID: 1387188574}
   - component: {fileID: 1387188573}
   m_Layer: 0
   m_Name: UDPsend
@@ -1445,8 +1458,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1387188570}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.23, y: 0.44444022, z: 0.035412446}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0.23000002, y: 0.44444022, z: 0.035412446}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1459,24 +1472,45 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1387188570}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7408b206688a14645977eb932298f52c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  jointController: {fileID: 455496912}
   shoulderJoint: {fileID: 1396408851}
   elbowJoint: {fileID: 1999911902}
-  upperArmLength: 0.2
-  forearmLength: 0.2
+  endEffector: {fileID: 257724092}
+  upperArmLength: 0.3
+  forearmLength: 0.3
   shoulderPitchOffset: 25
   shoulderPitchRange: 50
   maxIntensity: 255
-  centerVibratorRatio: 0.7
+  centerVibratorRatio: 0.5
   stm32IpAddress: 192.168.2.70
   stm32Port: 55555
   enableUdpSend: 1
   showDebugGizmos: 1
   showDebugLog: 0
+--- !u!114 &1387188574
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1387188570}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 157bce1c6db66e3409502a1798ab7548, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  nucleoIP: 192.168.2.70
+  nucleoPort: 55555
+  enableKRFeedback: 1
+  maxDistance: 0.5
+  updateInterval: 0.01
+  markerTask: {fileID: 444418179}
+  logSentData: 0
 --- !u!1 &1396408850
 GameObject:
   m_ObjectHideFlags: 0
@@ -1746,6 +1780,102 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1748051678}
   m_CullTransparentMesh: 1
+--- !u!1 &1751610596
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1751610598}
+  - component: {fileID: 1751610597}
+  m_Layer: 0
+  m_Name: DualTask
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1751610597
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1751610596}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 43d064829834cb2428d22501b8d8259f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  jointController: {fileID: 455496912}
+  ball: {fileID: 257724092}
+  ballRenderer: {fileID: 257724090}
+  leftHandTransform: {fileID: 850463572}
+  rightHandTransform: {fileID: 1280862877}
+  leftHandRenderer: {fileID: 850233649}
+  rightHandRenderer: {fileID: 979254702}
+  targetAPatterns:
+  - patternName: ArmPattern1
+    joint1Angle: 42
+    joint2Angle: 137
+  - patternName: ArmPattern2
+    joint1Angle: -18
+    joint2Angle: 83
+  - patternName: ArmPattern3
+    joint1Angle: 67
+    joint2Angle: 12
+  - patternName: ArmPattern4
+    joint1Angle: 5
+    joint2Angle: 88
+  - patternName: ArmPattern5
+    joint1Angle: -30
+    joint2Angle: 154
+  targetBLeftPositions:
+  - {x: 0.3, y: 1.2, z: 0.3}
+  - {x: -0.3, y: 1.2, z: 0.2}
+  - {x: 0, y: 1.5, z: 0.1}
+  - {x: 0.3, y: 0.9, z: 0.2}
+  - {x: -0.3, y: 0.9, z: 0.3}
+  targetBRightPositions:
+  - {x: -0.3, y: 1.2, z: 0.3}
+  - {x: 0.3, y: 1.2, z: 0.2}
+  - {x: 0, y: 1.5, z: 0.1}
+  - {x: -0.3, y: 0.9, z: 0.2}
+  - {x: 0.3, y: 0.9, z: 0.3}
+  trialHandPatterns: 0000000001000000000000000100000002000000
+  countdownText: {fileID: 1748051680}
+  totalTrials: 5
+  targetAScale: 2.5
+  targetBSizeLeft: {x: 0.1, y: 0.1, z: 0.1}
+  targetBSizeRight: {x: 0.1, y: 0.1, z: 0.1}
+  dwellTime: 1
+  contactThreshold: 0.05
+  targetAColor: {r: 0.11541079, g: 0.9716981, b: 0, a: 0.46666667}
+  targetBLeftColor: {r: 1, g: 0, b: 0, a: 1}
+  targetBRightColor: {r: 0, g: 0, b: 1, a: 1}
+  highlightBallColor: {r: 1, g: 0.5, b: 0, a: 1}
+  highlightLeftHandColor: {r: 1, g: 0.5, b: 0, a: 1}
+  highlightRightHandColor: {r: 1, g: 0.5, b: 0, a: 1}
+  enableLogging: 0
+  saveDestination: 0
+  subFolderName: DualTask
+--- !u!4 &1751610598
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1751610596}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.24147442, y: 0.2013723, z: -0.01762557}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1808495976
 GameObject:
   m_ObjectHideFlags: 0
@@ -2022,5 +2152,6 @@ SceneRoots:
   - {fileID: 455496911}
   - {fileID: 1387188572}
   - {fileID: 444418178}
+  - {fileID: 1751610598}
   - {fileID: 1029303571}
   - {fileID: 998467120}
