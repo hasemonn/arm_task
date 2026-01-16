@@ -13,7 +13,7 @@ public class IndependentEMGJointController : MonoBehaviour
     [SerializeField] private ControlMode controlMode = ControlMode.EMG;
 
     [Header("Manual Control (Manual Mode Only)")]
-    [SerializeField, Range(-25f, 75f)] private float manualJoint1Angle = 0f;
+    [SerializeField, Range(-25f, 75f)] private float manualJoint1Angle = 75f;
     [SerializeField, Range(-20f, 160f)] private float manualJoint2Angle = 0f;
 
     [Header("EMG Data Source (EMG Mode Only)")]
@@ -51,9 +51,9 @@ public class IndependentEMGJointController : MonoBehaviour
     [Header("Joint Control Settings")]
     [SerializeField, Range(0.1f, 5f)] private float speedMultiplier = 1f;
     [SerializeField, Range(1f, 180f)] private float maxRotationSpeed = 90f; // degrees per second
-    [SerializeField, Range(-30f, 0f)] private float joint1MinAngle = -20f;
-    [SerializeField, Range(0f, 80f)] private float joint1MaxAngle = 100f;
-    [SerializeField, Range(-20f, 0f)] private float joint2MinAngle = -20f;
+    [SerializeField, Range(-25f, 0f)] private float joint1MinAngle = -25f;
+    [SerializeField, Range(0f, 75f)] private float joint1MaxAngle = 100f;
+    [SerializeField, Range(-20f, 0f)] private float joint2MinAngle = 0f;
     [SerializeField, Range(0f, 160f)] private float joint2MaxAngle = 160f;
 
     [Header("Joint Rotation Axes")]
@@ -61,10 +61,12 @@ public class IndependentEMGJointController : MonoBehaviour
     [SerializeField] private Vector3 joint2RotationAxis = Vector3.right;   // X-axis by default
 
     [Header("EMG Channel Mapping (BiTalino Ch1-4)")]
-    [SerializeField, Range(1, 4)] private int joint1BendChannel = 1;     // Ch1: Joint1 positive
-    [SerializeField, Range(1, 4)] private int joint1ExtendChannel = 2;   // Ch2: Joint1 negative
+    [SerializeField, Range(1, 4)] private int joint1UpChannel = 2;       // Ch2: Joint1を上げる（extendの方）
     [SerializeField, Range(1, 4)] private int joint2BendChannel = 3;     // Ch3: Joint2 positive
     [SerializeField, Range(1, 4)] private int joint2ExtendChannel = 4;   // Ch4: Joint2 negative
+
+    [Header("Joint1 Constant Down Speed")]
+    [SerializeField, Range(0f, 90f)] private float joint1ConstantDownSpeed = 10f; // Joint1が自動的に下がる速度（度/秒、正の値）
 
     [Header("Control Thresholds")]
     [SerializeField, Range(0f, 20f)] private float activationThreshold = 5f;
@@ -91,6 +93,11 @@ public class IndependentEMGJointController : MonoBehaviour
     private float joint2LastSpeed = 0f;
     private float joint2LastAccel = 0f;
 
+    // Public properties for external access
+    public float CurrentJoint1Angle => joint1TargetAngle;
+    public float CurrentJoint2Angle => joint2TargetAngle;
+    public float Joint1Velocity => joint1LastSpeed;
+    public float Joint2Velocity => joint2LastSpeed;
     public float Joint1Jerk { get; private set; }
     public float Joint2Jerk { get; private set; }
     public float Joint1Acceleration { get; private set; }
@@ -125,10 +132,6 @@ public class IndependentEMGJointController : MonoBehaviour
                     enabled = false;
                     return;
                 }
-                else
-                {
-                    Debug.Log($"IndependentEMGJointController: EMGSignalProcessor found on '{emgProcessor.gameObject.name}'");
-                }
             }
         }
 
@@ -145,12 +148,11 @@ public class IndependentEMGJointController : MonoBehaviour
             baseRotation = Quaternion.identity;
         }
 
-        // Reset target angles to 0
-        joint1TargetAngle = 0f;
-        joint2TargetAngle = 0f;
+        // Reset target angles to initial position
+        joint1TargetAngle = 75f; // 初期位置: 75°
+        joint2TargetAngle = 0f;   // 初期位置: 0°
 
         isInitialized = true;
-        Debug.Log($"IndependentEMGJointController: Initialized successfully ({controlMode} mode)");
     }
 
     void Update()
@@ -227,10 +229,25 @@ public class IndependentEMGJointController : MonoBehaviour
     void CalculateJointControl()
     {
         float dt = Time.deltaTime;
-        // Joint 1 Control
-        float joint1BendRatio = GetChannelRatio(joint1BendChannel);
-        float joint1ExtendRatio = GetChannelRatio(joint1ExtendChannel);
-        float joint1Speed = CalculateJoyConSpeed(joint1BendRatio, joint1ExtendRatio);
+
+        // Joint 1 Control: Up (extend) only + Constant down speed
+        float joint1UpRatio = GetChannelRatio(joint1UpChannel);
+
+        // Apply activation threshold
+        if (joint1UpRatio < activationThreshold) joint1UpRatio = 0f;
+
+        // Calculate up speed (negative direction, extend方向)
+        float joint1UpSpeed = 0f;
+        if (joint1UpRatio >= dominanceThreshold)
+        {
+            // Convert percentage to rotation speed (negative for up/extend)
+            float speedRatio = joint1UpRatio / 100f;
+            joint1UpSpeed = speedRatio * maxRotationSpeed * speedMultiplier;
+        }
+
+        // Total joint1 speed = constant down speed (positive) - up speed
+        // Down: positive, Up: negative
+        float joint1Speed = joint1ConstantDownSpeed - joint1UpSpeed;
 
         // Joint 2 Control
         float joint2BendRatio = GetChannelRatio(joint2BendChannel);
@@ -368,25 +385,23 @@ public class IndependentEMGJointController : MonoBehaviour
 
     void LogControlValues()
     {
-        float j1BendRatio = GetChannelRatio(joint1BendChannel);
-        float j1ExtendRatio = GetChannelRatio(joint1ExtendChannel);
-        float j1Speed = CalculateJoyConSpeed(j1BendRatio, j1ExtendRatio);
+        float j1UpRatio = GetChannelRatio(joint1UpChannel);
 
         float j2BendRatio = GetChannelRatio(joint2BendChannel);
         float j2ExtendRatio = GetChannelRatio(joint2ExtendChannel);
         float j2Speed = CalculateJoyConSpeed(j2BendRatio, j2ExtendRatio);
 
-        Debug.Log($"EMG Independent Control - J1: {joint1TargetAngle:F1}° (speed:{j1Speed:F1}°/s) | " +
+        Debug.Log($"EMG Independent Control - J1: {joint1TargetAngle:F1}° (ConstDown:+{joint1ConstantDownSpeed:F1}°/s) | " +
                   $"J2: {joint2TargetAngle:F1}° (speed:{j2Speed:F1}°/s) | " +
-                  $"Ch{joint1BendChannel}/Ch{joint1ExtendChannel}: {j1BendRatio:F1}%/{j1ExtendRatio:F1}% | " +
+                  $"Ch{joint1UpChannel}(Up): {j1UpRatio:F1}% | " +
                   $"Ch{joint2BendChannel}/Ch{joint2ExtendChannel}: {j2BendRatio:F1}%/{j2ExtendRatio:F1}%");
     }
 
     // Public methods for external access
     public void ResetJointPositions()
     {
-        joint1TargetAngle = 0f;
-        joint2TargetAngle = 0f;
+        joint1TargetAngle = 75f; // 初期位置: 75
+        joint2TargetAngle = 0f;   // 初期位置: 0°
         joint1LastSpeed = 0f;
         joint1LastAccel = 0f;
         joint2LastSpeed = 0f;
@@ -396,14 +411,12 @@ public class IndependentEMGJointController : MonoBehaviour
         // Reset manual angles if in manual mode
         if (controlMode == ControlMode.Manual)
         {
-            manualJoint1Angle = 0f;
+            manualJoint1Angle = 75;
             manualJoint2Angle = 0f;
         }
 
         // Apply FK to reset all positions
         ApplyIndependentJointRotations();
-
-        Debug.Log("IndependentEMGJointController: Joint positions reset to initial state");
     }
 
     public void SetManualAngles(float joint1Angle, float joint2Angle)
@@ -412,11 +425,6 @@ public class IndependentEMGJointController : MonoBehaviour
         {
             manualJoint1Angle = Mathf.Clamp(joint1Angle, joint1MinAngle, joint1MaxAngle);
             manualJoint2Angle = Mathf.Clamp(joint2Angle, joint2MinAngle, joint2MaxAngle);
-            Debug.Log($"Manual angles set: Joint1={manualJoint1Angle:F1}°, Joint2={manualJoint2Angle:F1}°");
-        }
-        else
-        {
-            Debug.LogWarning("SetManualAngles: Controller is not in Manual mode");
         }
     }
 
@@ -433,7 +441,6 @@ public class IndependentEMGJointController : MonoBehaviour
         isFrozen = true;
         frozenJoint1Angle = joint1TargetAngle;
         frozenJoint2Angle = joint2TargetAngle;
-        Debug.Log($"Arm frozen at Joint1={frozenJoint1Angle:F1}°, Joint2={frozenJoint2Angle:F1}°");
     }
 
     /// <summary>
@@ -442,7 +449,6 @@ public class IndependentEMGJointController : MonoBehaviour
     public void UnfreezeArm()
     {
         isFrozen = false;
-        Debug.Log("Arm unfrozen - control resumed");
     }
 
     /// <summary>
@@ -465,7 +471,6 @@ public class IndependentEMGJointController : MonoBehaviour
     {
         joint1RotationAxis = joint1Axis.normalized;
         joint2RotationAxis = joint2Axis.normalized;
-        Debug.Log($"Joint rotation axes updated - J1: {joint1RotationAxis}, J2: {joint2RotationAxis}");
     }
 
     /// <summary>
@@ -483,8 +488,6 @@ public class IndependentEMGJointController : MonoBehaviour
             basePosition = Vector3.zero;
             baseRotation = Quaternion.identity;
         }
-
-        Debug.Log("Base position and rotation updated");
     }
 
     void OnGUI()
@@ -517,8 +520,7 @@ public class IndependentEMGJointController : MonoBehaviour
     void OnValidate()
     {
         // Ensure channel indices are within valid range (BiTalino Ch1-4)
-        joint1BendChannel = Mathf.Clamp(joint1BendChannel, 1, 4);
-        joint1ExtendChannel = Mathf.Clamp(joint1ExtendChannel, 1, 4);
+        joint1UpChannel = Mathf.Clamp(joint1UpChannel, 1, 4);
         joint2BendChannel = Mathf.Clamp(joint2BendChannel, 1, 4);
         joint2ExtendChannel = Mathf.Clamp(joint2ExtendChannel, 1, 4);
 

@@ -10,7 +10,7 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{9567C790-3047-7004-E1E0-307DEDD7F8BD}</ProjectGuid>
+    <ProjectGuid>{E7D8505E-4A49-3C9B-15CC-D3A3883DA0B4}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <AssemblyName>Meta.WitAi.TTS</AssemblyName>
@@ -55,7 +55,6 @@
     <UnityVersion>2022.3.60f1</UnityVersion>
   </PropertyGroup>
   <ItemGroup>
-    <Analyzer Include="C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Extensions\Microsoft\Visual Studio Tools for Unity\Analyzers\Microsoft.Unity.Analyzers.dll" />
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.60f1\Editor\Data\Tools\Unity.SourceGenerators\Unity.SourceGenerators.dll" />
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.60f1\Editor\Data\Tools\Unity.SourceGenerators\Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
@@ -961,11 +960,11 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="Meta.WitAi.Lib.csproj">
-      <Project>{6D3887E4-53DA-9716-F345-751C3346532C}</Project>
+      <Project>{E8C89A96-1901-5651-AF85-B66F670DD2CF}</Project>
       <Name>Meta.WitAi.Lib</Name>
     </ProjectReference>
     <ProjectReference Include="Meta.WitAi.csproj">
-      <Project>{2FCC3D1D-191D-D635-9B8E-39775A8C1145}</Project>
+      <Project>{002D891B-CD56-9212-57DF-8157C69A4386}</Project>
       <Name>Meta.WitAi</Name>
     </ProjectReference>
   </ItemGroup>

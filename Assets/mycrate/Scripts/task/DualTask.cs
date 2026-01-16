@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System;
+using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 
@@ -50,7 +51,7 @@ public class DualTask : MonoBehaviour
     [Tooltip("左手用ターゲットの位置（Trial 1-6）")]
     public Vector3[] targetBLeftPositions = new Vector3[]
     {
-        new Vector3(-0.3f, 0.8f, 0.25f),
+        new Vector3(-0.25f, 0.55f, 0.25f),
         new Vector3(-0.3f, 0.5f, 0.2f),
         new Vector3(0.2f, 0.6f, 0.1f),
         new Vector3(0.3f, 0.9f, 0.2f),
@@ -93,6 +94,7 @@ public class DualTask : MonoBehaviour
 
     [Header("Task Settings")]
     public int totalTrials = 6;
+    public float trialTimeLimit = 30.0f; // 1試行あたりの制限時間（秒）
     public float targetAScale = 2.5f; // ball（エンドエフェクタ）の2.5倍
     public Vector3 targetBSizeLeft = new Vector3(0.1f, 0.1f, 0.1f); // 左手用Cubeサイズ
     public Vector3 targetBSizeRight = new Vector3(0.1f, 0.1f, 0.1f); // 右手用Cubeサイズ
@@ -114,11 +116,12 @@ public class DualTask : MonoBehaviour
 
     [Header("Data Logging")]
     public bool enableLogging = true;
-    public SaveDestination saveDestination = SaveDestination.KP;
+    public SaveDestination saveDestination = SaveDestination.FB無し;
     public string subFolderName = "DualTask";
 
     public enum SaveDestination
     {
+        FB無し,
         KP,
         KR
     }
@@ -176,41 +179,11 @@ public class DualTask : MonoBehaviour
         public bool taskBRightSuccess;
         public bool contactLeftSuccess;
         public bool contactRightSuccess;
+        public bool isTimeout; // 時間制限で強制終了したかどうか
     }
 
-    [System.Serializable]
-    public struct MotionData
-    {
-        public float timestamp; // 試行開始からの経過時間
-        public int trialNumber;
-
-        // 腕（エンドエフェクタ）の情報
-        public Vector3 armPosition; // ボールの位置
-        public float armJoint1Angle; // 関節1の角度
-        public float armJoint2Angle; // 関節2の角度
-        public float armJoint1Velocity; // 関節1の速度
-        public float armJoint2Velocity; // 関節2の速度
-        public float armJoint1Jerk; // 関節1のジャーク
-        public float armJoint2Jerk; // 関節2のジャーク
-
-        // 手の位置情報
-        public Vector3 leftHandPosition;
-        public Vector3 rightHandPosition;
-
-        // ターゲットまでの距離
-        public float distanceToTargetA; // 腕からターゲットAまでの距離
-        public float distanceToTargetBLeft; // 左手からターゲットBまでの距離
-        public float distanceToTargetBRight; // 右手からターゲットBまでの距離
-        public float distanceBallToLeftHand; // ボールから左手までの距離（接触フェーズ用）
-        public float distanceBallToRightHand; // ボールから右手までの距離（接触フェーズ用）
-    }
-
-    // フレームごとのモーションデータバッファ
-    private List<MotionData> dataBuffer = new List<MotionData>();
-    private float trialStartTime; // 試行開始時刻
-    private Vector3 lastArmPosition; // 前フレームの腕位置（経路長計算用）
-    private const float LOG_INTERVAL = 0.001f; // 1ms = 1000Hz
-    private float lastLogTime = 0f;
+    // 試行開始時刻
+    private float trialStartTime;
 
     void Start()
     {
@@ -245,42 +218,11 @@ public class DualTask : MonoBehaviour
             countdownText.gameObject.SetActive(false);
         }
 
-        // ハンドトラッキング参照の診断
-        Debug.Log("=== DualTask: Hand Tracking Setup ===");
-        Debug.Log($"Left Hand Transform: {(leftHandTransform != null ? leftHandTransform.name : "NULL")}");
-        Debug.Log($"Right Hand Transform: {(rightHandTransform != null ? rightHandTransform.name : "NULL")}");
-        Debug.Log($"Left Hand Renderer: {(leftHandRenderer != null ? leftHandRenderer.name : "NULL")}");
-        if (leftHandRenderer != null)
-        {
-            Debug.Log($"  - Type: {leftHandRenderer.GetType().Name}");
-            Debug.Log($"  - Materials count: {leftHandRenderer.materials.Length}");
-        }
-        Debug.Log($"Right Hand Renderer: {(rightHandRenderer != null ? rightHandRenderer.name : "NULL")}");
-        if (rightHandRenderer != null)
-        {
-            Debug.Log($"  - Type: {rightHandRenderer.GetType().Name}");
-            Debug.Log($"  - Materials count: {rightHandRenderer.materials.Length}");
-        }
-        Debug.Log($"Ball Transform: {(ball != null ? ball.name : "NULL")}");
-        Debug.Log($"Ball Renderer: {(ballRenderer != null ? ballRenderer.name : "NULL")}");
-        Debug.Log("===================================");
+        // バックグラウンドでも実行を継続（勝手にPauseにならない）
+        Application.runInBackground = true;
     }
 
-    void Update()
-    {
-        if (!taskRunning) return;
-
-        if (enableLogging && ball != null)
-        {
-            // 1000Hz (1ms間隔) でデータをサンプリング
-            float currentTime = Time.time;
-            if (currentTime - lastLogTime >= LOG_INTERVAL)
-            {
-                LogMotionData();
-                lastLogTime = currentTime;
-            }
-        }
-    }
+    // データロギングは削除（サマリーのみ保存）
 
     [ContextMenu("Start Task")]
     public void StartTask()
@@ -293,8 +235,6 @@ public class DualTask : MonoBehaviour
         {
             trialOrder.Add(i);
         }
-
-        Debug.Log($"DualTask: Trial order (1 to 6): {string.Join(", ", trialOrder)}");
 
         trialCount = 0;
         trialSummaries.Clear();
@@ -323,17 +263,14 @@ public class DualTask : MonoBehaviour
 
             // 色を全てリセット
             ResetColors();
-            Debug.Log("[All Trials Complete] Colors reset");
 
             // 「終了」と5秒間表示
             if (countdownText != null)
             {
                 countdownText.gameObject.SetActive(true);
                 countdownText.text = "end task";
-                Debug.Log("[All Trials Complete] Displaying '終了' for 5 seconds");
                 await UniTask.Delay(TimeSpan.FromSeconds(5f), cancellationToken: cancellationToken);
                 countdownText.gameObject.SetActive(false);
-                Debug.Log("[All Trials Complete] '終了' text hidden");
             }
 
             if (enableLogging)
@@ -344,7 +281,6 @@ public class DualTask : MonoBehaviour
         catch (OperationCanceledException)
         {
             statusMessage = "Task Cancelled";
-            Debug.Log("[Task Cancelled] Flow interrupted");
         }
     }
 
@@ -403,8 +339,6 @@ public class DualTask : MonoBehaviour
 
         taskRunning = true;
         trialStartTime = Time.time; // クラスフィールドに設定
-        dataBuffer.Clear(); // データバッファをクリア
-        lastLogTime = Time.time; // ログ時刻をリセット
         float timeToReachA = 0f;
         float timeToReachBLeft = 0f;
         float timeToReachBRight = 0f;
@@ -417,6 +351,8 @@ public class DualTask : MonoBehaviour
         bool contactRightSuccess = false;
 
         statusMessage = $"Trial {trialCount}/{totalTrials} - Reach targets ({currentHandPattern})";
+
+        bool isTimeout = false;
 
         // 並行タスクリスト
         List<UniTask<(string taskName, bool success)>> tasks = new List<UniTask<(string, bool)>>();
@@ -435,27 +371,76 @@ public class DualTask : MonoBehaviour
             tasks.Add(WaitForTargetReachedNamed("TaskBRight", currentTargetBRight, rightHandTransform, dwellTime, cancellationToken));
         }
 
-        // すべてのタスクが完了するまで待機
-        var results = await UniTask.WhenAll(tasks);
+        // タスク完了を待機（タイムアウトチェック付き & 個別色変更）
+        HashSet<int> completedTaskIndices = new HashSet<int>();
+        int totalTaskCount = tasks.Count;
 
-        // 各タスクの成功を確認
-        foreach (var result in results)
+        while (completedTaskIndices.Count < totalTaskCount)
         {
-            if (result.taskName == "TaskA" && result.success)
+            // 各タスクが完了したら即座に色を変更
+            for (int i = 0; i < tasks.Count; i++)
             {
-                taskASuccess = true;
-                timeToReachA = Time.time - trialStartTime;
+                // 既に処理済みのタスクはスキップ
+                if (completedTaskIndices.Contains(i))
+                    continue;
+
+                // タスクが完了しているかチェック
+                if (tasks[i].Status == UniTaskStatus.Succeeded)
+                {
+                    // 結果を取得（一度だけ）
+                    var result = tasks[i].GetAwaiter().GetResult();
+                    completedTaskIndices.Add(i); // 処理済みとしてマーク
+
+                    if (result.taskName == "TaskA" && result.success)
+                    {
+                        taskASuccess = true;
+                        timeToReachA = Time.time - trialStartTime;
+
+                        // TaskA成功 → 即座にballをオレンジに
+                        Destroy(currentTargetA);
+                        currentTargetA = null;
+                        if (ballRenderer != null)
+                        {
+                            SetRendererColor(ballRenderer, highlightBallColor);
+                        }
+                    }
+                    else if (result.taskName == "TaskBLeft" && result.success)
+                    {
+                        taskBLeftSuccess = true;
+                        timeToReachBLeft = Time.time - trialStartTime;
+
+                        // TaskBLeft成功 → 即座に左手をオレンジに
+                        Destroy(currentTargetBLeft);
+                        currentTargetBLeft = null;
+                        if (leftHandRenderer != null)
+                        {
+                            SetRendererColor(leftHandRenderer, highlightLeftHandColor);
+                        }
+                    }
+                    else if (result.taskName == "TaskBRight" && result.success)
+                    {
+                        taskBRightSuccess = true;
+                        timeToReachBRight = Time.time - trialStartTime;
+
+                        // TaskBRight成功 → 即座に右手をオレンジに
+                        Destroy(currentTargetBRight);
+                        currentTargetBRight = null;
+                        if (rightHandRenderer != null)
+                        {
+                            SetRendererColor(rightHandRenderer, highlightRightHandColor);
+                        }
+                    }
+                }
             }
-            else if (result.taskName == "TaskBLeft" && result.success)
+
+            // 時間制限チェック
+            if (Time.time - trialStartTime > trialTimeLimit)
             {
-                taskBLeftSuccess = true;
-                timeToReachBLeft = Time.time - trialStartTime;
+                isTimeout = true;
+                Debug.LogWarning($"[Trial{trialCount}] Timeout after {trialTimeLimit}s");
+                break;
             }
-            else if (result.taskName == "TaskBRight" && result.success)
-            {
-                taskBRightSuccess = true;
-                timeToReachBRight = Time.time - trialStartTime;
-            }
+            await UniTask.Delay(100, cancellationToken: cancellationToken); // 0.1秒ごとにチェック
         }
 
         // すべてのターゲットが達成されたか確認
@@ -464,53 +449,8 @@ public class DualTask : MonoBehaviour
         if (currentHandPattern == HandPattern.Right) allTargetsReached &= taskBRightSuccess;
         if (currentHandPattern == HandPattern.Both) allTargetsReached &= (taskBLeftSuccess && taskBRightSuccess);
 
-        Debug.Log($"[Trial{trialCount}] Target completion status - Pattern: {currentHandPattern}, TaskA: {taskASuccess}, TaskBLeft: {taskBLeftSuccess}, TaskBRight: {taskBRightSuccess}, AllReached: {allTargetsReached}");
-
-        // すべてのターゲット達成後、一斉に色を変更
-        if (allTargetsReached)
+        if (allTargetsReached && !isTimeout)
         {
-            Debug.Log($"[Trial{trialCount}] *** ALL TARGETS REACHED - Changing colors ***");
-
-            // TaskA成功 → ballをオレンジに
-            if (taskASuccess)
-            {
-                Destroy(currentTargetA);
-                currentTargetA = null;
-                if (ballRenderer != null)
-                {
-                    SetRendererColor(ballRenderer, highlightBallColor);
-                    Debug.Log($"[Trial{trialCount}] Ball changed to orange");
-                }
-            }
-
-            // TaskBLeft成功 → 左手をオレンジに
-            if (taskBLeftSuccess)
-            {
-                Destroy(currentTargetBLeft);
-                currentTargetBLeft = null;
-                if (leftHandRenderer != null)
-                {
-                    SetRendererColor(leftHandRenderer, highlightLeftHandColor);
-                    Debug.Log($"[Trial{trialCount}] Left hand changed to orange");
-                }
-            }
-
-            // TaskBRight成功 → 右手をオレンジに
-            if (taskBRightSuccess)
-            {
-                Destroy(currentTargetBRight);
-                currentTargetBRight = null;
-                if (rightHandRenderer != null)
-                {
-                    SetRendererColor(rightHandRenderer, highlightRightHandColor);
-                    Debug.Log($"[Trial{trialCount}] Right hand changed to orange");
-                }
-            }
-        }
-
-        if (allTargetsReached)
-        {
-            Debug.Log($"[Trial{trialCount}] *** ENTERING CONTACT PHASE ***");
             statusMessage = $"Trial {trialCount}/{totalTrials} - Touch hand(s) to ball";
 
             // 接触判定タスクリスト
@@ -529,24 +469,52 @@ public class DualTask : MonoBehaviour
                 contactTasks.Add(WaitForContactNamed("ContactRight", rightHandTransform, currentContactThreshold, cancellationToken));
             }
 
-            // すべての接触が完了するまで待機
-            var contactResults = await UniTask.WhenAll(contactTasks);
+            // 接触完了を待機（タイムアウトチェック付き）
+            HashSet<int> completedContactIndices = new HashSet<int>();
+            int totalContactCount = contactTasks.Count;
 
-            foreach (var result in contactResults)
+            while (completedContactIndices.Count < totalContactCount)
             {
-                if (result.contactName == "ContactLeft" && result.success)
+                // 各接触タスクをチェック
+                for (int i = 0; i < contactTasks.Count; i++)
                 {
-                    contactLeftSuccess = true;
-                    timeToContactLeft = result.time;
-                    Debug.Log($"[Trial{trialCount}] Left hand contact at {timeToContactLeft:F2}s");
+                    // 既に処理済みのタスクはスキップ
+                    if (completedContactIndices.Contains(i))
+                        continue;
+
+                    // タスクが完了しているかチェック
+                    if (contactTasks[i].Status == UniTaskStatus.Succeeded)
+                    {
+                        // 結果を取得（一度だけ）
+                        var result = contactTasks[i].GetAwaiter().GetResult();
+                        completedContactIndices.Add(i); // 処理済みとしてマーク
+
+                        if (result.contactName == "ContactLeft" && result.success)
+                        {
+                            contactLeftSuccess = true;
+                            timeToContactLeft = result.time;
+                        }
+                        else if (result.contactName == "ContactRight" && result.success)
+                        {
+                            contactRightSuccess = true;
+                            timeToContactRight = result.time;
+                        }
+                    }
                 }
-                else if (result.contactName == "ContactRight" && result.success)
+
+                // 時間制限チェック
+                if (Time.time - trialStartTime > trialTimeLimit)
                 {
-                    contactRightSuccess = true;
-                    timeToContactRight = result.time;
-                    Debug.Log($"[Trial{trialCount}] Right hand contact at {timeToContactRight:F2}s");
+                    isTimeout = true;
+                    Debug.LogWarning($"[Trial{trialCount}] Timeout during contact phase after {trialTimeLimit}s");
+                    break;
                 }
+                await UniTask.Delay(100, cancellationToken: cancellationToken); // 0.1秒ごとにチェック
             }
+        }
+        else if (isTimeout)
+        {
+            Debug.LogWarning($"[Trial{trialCount}] *** SKIPPING CONTACT PHASE - Timeout ***");
         }
         else
         {
@@ -559,21 +527,24 @@ public class DualTask : MonoBehaviour
         SaveTrialSummary(patternIndex, timeToReachA, timeToReachBLeft, timeToReachBRight,
                         timeToContactLeft, timeToContactRight, totalTime,
                         taskASuccess, taskBLeftSuccess, taskBRightSuccess,
-                        contactLeftSuccess, contactRightSuccess);
+                        contactLeftSuccess, contactRightSuccess, isTimeout);
 
-        // 詳細なモーションデータを保存
-        if (enableLogging)
+        // クリーンアップ（まだ残っているターゲットがあれば破棄）
+        if (currentTargetA != null)
         {
-            SaveTrialDetailedMotionCSV(trialCount, patternIndex);
+            Destroy(currentTargetA);
+            currentTargetA = null;
         }
-
-        // クリーンアップ
-        if (currentTargetA != null) Destroy(currentTargetA);
-        if (currentTargetBLeft != null) Destroy(currentTargetBLeft);
-        if (currentTargetBRight != null) Destroy(currentTargetBRight);
-        currentTargetA = null;
-        currentTargetBLeft = null;
-        currentTargetBRight = null;
+        if (currentTargetBLeft != null)
+        {
+            Destroy(currentTargetBLeft);
+            currentTargetBLeft = null;
+        }
+        if (currentTargetBRight != null)
+        {
+            Destroy(currentTargetBRight);
+            currentTargetBRight = null;
+        }
 
         taskRunning = false;
 
@@ -593,31 +564,16 @@ public class DualTask : MonoBehaviour
         if (ballRenderer != null)
         {
             SetRendererColor(ballRenderer, originalBallColor);
-            Debug.Log($"[ResetColors] Ball color reset to {originalBallColor}");
-        }
-        else
-        {
-            Debug.LogWarning("[ResetColors] ballRenderer is null!");
         }
 
         if (leftHandRenderer != null)
         {
             SetRendererColor(leftHandRenderer, originalLeftHandColor);
-            Debug.Log($"[ResetColors] Left hand color reset to {originalLeftHandColor}");
-        }
-        else
-        {
-            Debug.LogWarning("[ResetColors] leftHandRenderer is null!");
         }
 
         if (rightHandRenderer != null)
         {
             SetRendererColor(rightHandRenderer, originalRightHandColor);
-            Debug.Log($"[ResetColors] Right hand color reset to {originalRightHandColor}");
-        }
-        else
-        {
-            Debug.LogWarning("[ResetColors] rightHandRenderer is null!");
         }
     }
 
@@ -678,8 +634,6 @@ public class DualTask : MonoBehaviour
             colliderA.enabled = false;
         }
 
-        Debug.Log($"[Trial{trialCount}] Target A created at {currentTargetAPosition}");
-
         // ターゲットB（手用）を生成 - パターンに応じて
         if (patternIndex >= targetBLeftPositions.Length || patternIndex >= targetBRightPositions.Length)
         {
@@ -710,9 +664,6 @@ public class DualTask : MonoBehaviour
             {
                 colliderBLeft.enabled = false;
             }
-
-            float radiusLeft = targetBSizeLeft.x / 2f;
-            Debug.Log($"[Trial{trialCount}] Target B (Left) created at {currentTargetBLeftPosition}, Size: {targetBSizeLeft}, Radius: {radiusLeft:F3}m");
         }
 
         // 右手用ターゲット
@@ -735,9 +686,6 @@ public class DualTask : MonoBehaviour
             {
                 colliderBRight.enabled = false;
             }
-
-            float radiusRight = targetBSizeRight.x / 2f;
-            Debug.Log($"[Trial{trialCount}] Target B (Right) created at {currentTargetBRightPosition}, Size: {targetBSizeRight}, Radius: {radiusRight:F3}m");
         }
     }
 
@@ -798,12 +746,16 @@ public class DualTask : MonoBehaviour
 
         float targetRadius = target.transform.localScale.x / 2f; // 球体またはCubeの半径
         float dwellTimer = 0f;
-        float lastLogTime = 0f;
-
-        Debug.Log($"[{taskName}] Starting detection - Target: {target.transform.position}, Radius: {targetRadius}");
 
         while (dwellTimer < dwellTime)
         {
+            // ターゲットが破棄されていたら失敗として終了
+            if (target == null)
+            {
+                Debug.LogWarning($"[{taskName}] Target destroyed - returning failure");
+                return (taskName, false);
+            }
+
             if (tracker == null)
             {
                 Debug.LogWarning($"[{taskName}] Tracker became null during execution!");
@@ -811,13 +763,6 @@ public class DualTask : MonoBehaviour
             }
 
             float distance = Vector3.Distance(tracker.position, target.transform.position);
-
-            // 1秒ごとにデバッグログを出力
-            if (Time.time - lastLogTime >= 1f)
-            {
-                Debug.Log($"[{taskName}] Tracker: {tracker.position}, Target: {target.transform.position}, Distance: {distance:F3}m, Radius: {targetRadius:F3}m, Dwell: {dwellTimer:F2}s");
-                lastLogTime = Time.time;
-            }
 
             if (distance <= targetRadius)
             {
@@ -831,7 +776,6 @@ public class DualTask : MonoBehaviour
             await UniTask.Yield(cancellationToken);
         }
 
-        Debug.Log($"[{taskName}] SUCCESS! Dwell time reached: {dwellTimer:F2}s");
         return (taskName, true);
     }
 
@@ -853,25 +797,21 @@ public class DualTask : MonoBehaviour
         }
 
         float contactStartTime = Time.time;
-        float lastLogTime = 0f;
-
-        Debug.Log($"[{contactName}] Starting contact detection - Ball: {ball.position}, Hand: {handTransform.position}, Threshold: {threshold:F3}m");
 
         while (true)
         {
-            float distance = Vector3.Distance(ball.position, handTransform.position);
-
-            // 0.5秒ごとにデバッグログを出力
-            if (Time.time - lastLogTime >= 0.5f)
+            // ballまたはhandが破棄されていたら失敗として終了
+            if (ball == null || handTransform == null)
             {
-                Debug.Log($"[{contactName}] Ball: {ball.position.ToString("F3")}, Hand: {handTransform.position.ToString("F3")}, Distance: {distance:F3}m / {threshold:F3}m");
-                lastLogTime = Time.time;
+                Debug.LogWarning($"[{contactName}] Ball or Hand destroyed - returning failure");
+                return (contactName, false, 0f);
             }
+
+            float distance = Vector3.Distance(ball.position, handTransform.position);
 
             if (distance <= threshold)
             {
                 float contactTime = Time.time - contactStartTime;
-                Debug.Log($"[{contactName}] CONTACT SUCCESS! Distance: {distance:F3}m, Time: {contactTime:F2}s");
                 return (contactName, true, contactTime);
             }
 
@@ -882,7 +822,7 @@ public class DualTask : MonoBehaviour
     void SaveTrialSummary(int patternIndex, float timeToReachA, float timeToReachBLeft, float timeToReachBRight,
                          float timeToContactLeft, float timeToContactRight, float totalTime,
                          bool taskASuccess, bool taskBLeftSuccess, bool taskBRightSuccess,
-                         bool contactLeftSuccess, bool contactRightSuccess)
+                         bool contactLeftSuccess, bool contactRightSuccess, bool isTimeout)
     {
         JointAnglePattern pattern = targetAPatterns[patternIndex];
 
@@ -905,127 +845,13 @@ public class DualTask : MonoBehaviour
             taskBLeftSuccess = taskBLeftSuccess,
             taskBRightSuccess = taskBRightSuccess,
             contactLeftSuccess = contactLeftSuccess,
-            contactRightSuccess = contactRightSuccess
+            contactRightSuccess = contactRightSuccess,
+            isTimeout = isTimeout
         };
 
         trialSummaries.Add(summary);
     }
 
-    /// <summary>
-    /// フレームごとにデータを記録
-    /// </summary>
-    void LogMotionData()
-    {
-        if (ball == null) return;
-
-        float trialElapsedTime = Time.time - trialStartTime;
-        Vector3 currentArmPosition = ball.position;
-
-        // 関節角度と速度を取得
-        float joint1Angle = 0f;
-        float joint2Angle = 0f;
-        float joint1Velocity = 0f;
-        float joint2Velocity = 0f;
-        float joint1Jerk = 0f;
-        float joint2Jerk = 0f;
-
-        if (jointController != null)
-        {
-            joint1Angle = jointController.CurrentJoint1Angle;
-            joint2Angle = jointController.CurrentJoint2Angle;
-            joint1Velocity = jointController.Joint1Velocity;
-            joint2Velocity = jointController.Joint2Velocity;
-            joint1Jerk = jointController.Joint1Jerk;
-            joint2Jerk = jointController.Joint2Jerk;
-        }
-
-        // 手の位置
-        Vector3 leftHandPos = leftHandTransform != null ? leftHandTransform.position : Vector3.zero;
-        Vector3 rightHandPos = rightHandTransform != null ? rightHandTransform.position : Vector3.zero;
-
-        // ターゲットまでの距離を計算
-        float distToTargetA = currentTargetA != null ? Vector3.Distance(currentArmPosition, currentTargetA.transform.position) : 0f;
-        float distToTargetBLeft = (currentTargetBLeft != null && leftHandTransform != null) ? Vector3.Distance(leftHandPos, currentTargetBLeft.transform.position) : 0f;
-        float distToTargetBRight = (currentTargetBRight != null && rightHandTransform != null) ? Vector3.Distance(rightHandPos, currentTargetBRight.transform.position) : 0f;
-
-        // ボールと手の距離（接触フェーズ用）
-        float distBallToLeft = leftHandTransform != null ? Vector3.Distance(currentArmPosition, leftHandPos) : 0f;
-        float distBallToRight = rightHandTransform != null ? Vector3.Distance(currentArmPosition, rightHandPos) : 0f;
-
-        // データを記録
-        MotionData data = new MotionData
-        {
-            timestamp = trialElapsedTime,
-            trialNumber = trialCount,
-            armPosition = currentArmPosition,
-            armJoint1Angle = joint1Angle,
-            armJoint2Angle = joint2Angle,
-            armJoint1Velocity = joint1Velocity,
-            armJoint2Velocity = joint2Velocity,
-            armJoint1Jerk = joint1Jerk,
-            armJoint2Jerk = joint2Jerk,
-            leftHandPosition = leftHandPos,
-            rightHandPosition = rightHandPos,
-            distanceToTargetA = distToTargetA,
-            distanceToTargetBLeft = distToTargetBLeft,
-            distanceToTargetBRight = distToTargetBRight,
-            distanceBallToLeftHand = distBallToLeft,
-            distanceBallToRightHand = distBallToRight
-        };
-
-        dataBuffer.Add(data);
-        lastArmPosition = currentArmPosition;
-    }
-
-    /// <summary>
-    /// 各試行の詳細なモーションデータをCSVに保存
-    /// </summary>
-    void SaveTrialDetailedMotionCSV(int trialNumber, int patternIndex)
-    {
-        if (dataBuffer.Count == 0) return;
-
-        string folderPath = GetDataFolderPath();
-
-        if (!Directory.Exists(folderPath))
-        {
-            Directory.CreateDirectory(folderPath);
-        }
-
-        string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        string handPatternName = trialHandPatterns[patternIndex].ToString();
-        string filename = $"Trial{trialNumber:D2}_{handPatternName}_Pattern{(patternIndex + 1):D2}_{timestamp}.csv";
-        string filepath = Path.Combine(folderPath, filename);
-
-        StringBuilder csv = new StringBuilder();
-
-        // CSVヘッダー
-        csv.AppendLine("Timestamp,TrialNumber," +
-                      "ArmPosX,ArmPosY,ArmPosZ," +
-                      "ArmJoint1Angle,ArmJoint2Angle," +
-                      "ArmJoint1Velocity,ArmJoint2Velocity," +
-                      "ArmJoint1Jerk,ArmJoint2Jerk," +
-                      "LeftHandPosX,LeftHandPosY,LeftHandPosZ," +
-                      "RightHandPosX,RightHandPosY,RightHandPosZ," +
-                      "DistanceToTargetA,DistanceToTargetBLeft,DistanceToTargetBRight," +
-                      "DistanceBallToLeftHand,DistanceBallToRightHand");
-
-        // データ行
-        foreach (var data in dataBuffer)
-        {
-            csv.AppendLine($"{data.timestamp},{data.trialNumber}," +
-                          $"{data.armPosition.x},{data.armPosition.y},{data.armPosition.z}," +
-                          $"{data.armJoint1Angle},{data.armJoint2Angle}," +
-                          $"{data.armJoint1Velocity},{data.armJoint2Velocity}," +
-                          $"{data.armJoint1Jerk},{data.armJoint2Jerk}," +
-                          $"{data.leftHandPosition.x},{data.leftHandPosition.y},{data.leftHandPosition.z}," +
-                          $"{data.rightHandPosition.x},{data.rightHandPosition.y},{data.rightHandPosition.z}," +
-                          $"{data.distanceToTargetA},{data.distanceToTargetBLeft},{data.distanceToTargetBRight}," +
-                          $"{data.distanceBallToLeftHand},{data.distanceBallToRightHand}");
-        }
-
-        File.WriteAllText(filepath, csv.ToString());
-        Debug.Log($"DualTask: Trial {trialNumber} detailed motion data saved to {filepath}");
-    }
 
     void SaveAllData()
     {
@@ -1042,30 +868,54 @@ public class DualTask : MonoBehaviour
 
     void SaveTrialSummaryCSV(string folderPath, string timestamp)
     {
-        if (trialSummaries.Count == 0) return;
+        if (trialSummaries.Count == 0)
+        {
+            Debug.LogWarning("[SaveTrialSummaryCSV] No trial summaries to save!");
+            return;
+        }
 
         string filename = $"DualTaskSummary_{timestamp}.csv";
         string filepath = Path.Combine(folderPath, filename);
 
         StringBuilder csv = new StringBuilder();
-        csv.AppendLine("TrialNumber,HandPattern,ArmPatternName,TargetAJoint1,TargetAJoint2," +
-                      "TargetBLeftPosX,TargetBLeftPosY,TargetBLeftPosZ," +
-                      "TargetBRightPosX,TargetBRightPosY,TargetBRightPosZ," +
-                      "TimeToReachA,TimeToReachBLeft,TimeToReachBRight," +
-                      "TimeToContactLeft,TimeToContactRight,TotalTime," +
-                      "TaskASuccess,TaskBLeftSuccess,TaskBRightSuccess," +
-                      "ContactLeftSuccess,ContactRightSuccess");
+        // ヘッダー行（7列）
+        csv.AppendLine("TrialNumber,Condition,TimeToReachArm,TimeToReachLeftHand,TimeToReachRightHand,TimeToContact,IsTimeout");
 
         foreach (var summary in trialSummaries)
         {
-            csv.AppendLine($"{summary.trialNumber},{summary.handPattern},{summary.armPatternName}," +
-                          $"{summary.targetAJoint1},{summary.targetAJoint2}," +
-                          $"{summary.targetBLeftPosition.x},{summary.targetBLeftPosition.y},{summary.targetBLeftPosition.z}," +
-                          $"{summary.targetBRightPosition.x},{summary.targetBRightPosition.y},{summary.targetBRightPosition.z}," +
-                          $"{summary.timeToReachA},{summary.timeToReachBLeft},{summary.timeToReachBRight}," +
-                          $"{summary.timeToContactLeft},{summary.timeToContactRight},{summary.totalTime}," +
-                          $"{summary.taskASuccess},{summary.taskBLeftSuccess},{summary.taskBRightSuccess}," +
-                          $"{summary.contactLeftSuccess},{summary.contactRightSuccess}");
+            // すべてオレンジになった時刻を計算
+            float allOrangeTime = 0f;
+            float timeToContact = 0f;
+
+            if (summary.handPattern == "Left")
+            {
+                // Left: max(timeToReachA, timeToReachBLeft)
+                allOrangeTime = Mathf.Max(summary.timeToReachA, summary.timeToReachBLeft);
+                timeToContact = summary.contactLeftSuccess ? summary.timeToContactLeft - allOrangeTime : 0f;
+            }
+            else if (summary.handPattern == "Right")
+            {
+                // Right: max(timeToReachA, timeToReachBRight)
+                allOrangeTime = Mathf.Max(summary.timeToReachA, summary.timeToReachBRight);
+                timeToContact = summary.contactRightSuccess ? summary.timeToContactRight - allOrangeTime : 0f;
+            }
+            else if (summary.handPattern == "Both")
+            {
+                // Both: max(timeToReachA, timeToReachBLeft, timeToReachBRight)
+                allOrangeTime = Mathf.Max(summary.timeToReachA, Mathf.Max(summary.timeToReachBLeft, summary.timeToReachBRight));
+                // 両手の接触のうち遅い方を使用
+                float lastContactTime = Mathf.Max(summary.timeToContactLeft, summary.timeToContactRight);
+                timeToContact = (summary.contactLeftSuccess && summary.contactRightSuccess) ? lastContactTime - allOrangeTime : 0f;
+            }
+
+            // データ行（7列）
+            csv.AppendLine($"{summary.trialNumber}," +
+                          $"{summary.handPattern}," +
+                          $"{summary.timeToReachA:F3}," +
+                          $"{summary.timeToReachBLeft:F3}," +
+                          $"{summary.timeToReachBRight:F3}," +
+                          $"{timeToContact:F3}," +
+                          $"{summary.isTimeout}");
         }
 
         File.WriteAllText(filepath, csv.ToString());
@@ -1078,6 +928,9 @@ public class DualTask : MonoBehaviour
 
         switch (saveDestination)
         {
+            case SaveDestination.FB無し:
+                basePath = Path.Combine(Application.dataPath, @"..\datafolder\dual\nonFB");
+                break;
             case SaveDestination.KP:
                 basePath = Path.Combine(Application.dataPath, @"..\datafolder\dual\KP");
                 break;
@@ -1085,7 +938,7 @@ public class DualTask : MonoBehaviour
                 basePath = Path.Combine(Application.dataPath, @"..\datafolder\dual\KR");
                 break;
             default:
-                basePath = Path.Combine(Application.dataPath, @"..\datafolder\dual\KP");
+                basePath = Path.Combine(Application.dataPath, @"..\datafolder\dual\nonFB");
                 break;
         }
 
@@ -1129,72 +982,6 @@ public class DualTask : MonoBehaviour
             ResetColors();
             statusMessage = "Task Stopped";
         }
-    }
-
-    [ContextMenu("Debug: Log Hand Positions")]
-    public void DebugLogHandPositions()
-    {
-        Debug.Log("=== Hand Positions Debug ===");
-        Debug.Log($"Left Hand: {(leftHandTransform != null ? leftHandTransform.position.ToString("F3") : "NULL")}");
-        Debug.Log($"Right Hand: {(rightHandTransform != null ? rightHandTransform.position.ToString("F3") : "NULL")}");
-        Debug.Log($"Ball: {(ball != null ? ball.position.ToString("F3") : "NULL")}");
-
-        if (currentTargetBLeft != null)
-        {
-            Debug.Log($"Target B (Left): {currentTargetBLeft.transform.position.ToString("F3")}");
-            if (leftHandTransform != null)
-            {
-                float dist = Vector3.Distance(leftHandTransform.position, currentTargetBLeft.transform.position);
-                float radius = currentTargetBLeft.transform.localScale.x / 2f;
-                Debug.Log($"  Left hand distance: {dist:F3}m (threshold: {radius:F3}m) - {(dist <= radius ? "INSIDE" : "OUTSIDE")}");
-            }
-        }
-
-        if (currentTargetBRight != null)
-        {
-            Debug.Log($"Target B (Right): {currentTargetBRight.transform.position.ToString("F3")}");
-            if (rightHandTransform != null)
-            {
-                float dist = Vector3.Distance(rightHandTransform.position, currentTargetBRight.transform.position);
-                float radius = currentTargetBRight.transform.localScale.x / 2f;
-                Debug.Log($"  Right hand distance: {dist:F3}m (threshold: {radius:F3}m) - {(dist <= radius ? "INSIDE" : "OUTSIDE")}");
-            }
-        }
-    }
-
-    [ContextMenu("Debug: Test Color Change - Left Hand")]
-    public void DebugTestColorChangeLeft()
-    {
-        if (leftHandRenderer != null)
-        {
-            SetRendererColor(leftHandRenderer, highlightLeftHandColor);
-            Debug.Log($"Left hand color set to {highlightLeftHandColor}");
-        }
-        else
-        {
-            Debug.LogWarning("leftHandRenderer is null!");
-        }
-    }
-
-    [ContextMenu("Debug: Test Color Change - Right Hand")]
-    public void DebugTestColorChangeRight()
-    {
-        if (rightHandRenderer != null)
-        {
-            SetRendererColor(rightHandRenderer, highlightRightHandColor);
-            Debug.Log($"Right hand color set to {highlightRightHandColor}");
-        }
-        else
-        {
-            Debug.LogWarning("rightHandRenderer is null!");
-        }
-    }
-
-    [ContextMenu("Debug: Reset All Colors")]
-    public void DebugResetAllColors()
-    {
-        ResetColors();
-        Debug.Log("All colors reset");
     }
 
     void OnGUI()

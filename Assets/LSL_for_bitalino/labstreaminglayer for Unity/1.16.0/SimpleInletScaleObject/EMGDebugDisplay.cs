@@ -37,8 +37,6 @@ namespace LSL4Unity.Samples.SimpleInlet
 
         void Start()
         {
-            Debug.Log("=== EMGDebugDisplay Started ===");
-
             if (string.IsNullOrEmpty(StreamName))
             {
                 errorMessage = "StreamName is empty!";
@@ -47,7 +45,6 @@ namespace LSL4Unity.Samples.SimpleInlet
                 return;
             }
 
-            Debug.Log($"Searching for LSL stream: '{StreamName}'");
             isSearching = true;
 
             // 全ストリームを検索してデバッグ
@@ -57,44 +54,29 @@ namespace LSL4Unity.Samples.SimpleInlet
 
         IEnumerator ResolveExpectedStream()
         {
-            Debug.Log($"[LSL] Resolver created for stream: '{StreamName}'");
-
             var results = resolver.results();
-            int waitCount = 0;
 
             while (results.Length == 0)
             {
-                waitCount++;
-                if (waitCount % 10 == 0)  // 1秒ごとにログ
-                {
-                    Debug.Log($"[LSL] Still searching... ({waitCount * 0.1f}s elapsed)");
-                }
-
                 yield return new WaitForSeconds(0.1f);
                 results = resolver.results();
 
-                // タイムアウト（30秒）
-                if (waitCount > 300)
-                {
-                    errorMessage = "Timeout: Stream not found after 30 seconds";
-                    Debug.LogError(errorMessage);
-                    isSearching = false;
-                    enabled = false;
-                    yield break;
-                }
+                // タイムアウトを無効化（フリーズ原因のため）
+                // ストリームが見つかるまで無限に待機
+                // if (waitCount > 300)
+                // {
+                //     errorMessage = "Timeout: Stream not found after 30 seconds";
+                //     Debug.LogError(errorMessage);
+                //     isSearching = false;
+                //     enabled = false;
+                //     yield break;
+                // }
             }
 
             isSearching = false;
 
             try
             {
-                // 見つかった全ストリームをログ出力
-                Debug.Log($"[LSL] Found {results.Length} stream(s):");
-                for (int i = 0; i < results.Length; i++)
-                {
-                    Debug.Log($"  Stream {i}: Name='{results[i].name()}', Type='{results[i].type()}', Channels={results[i].channel_count()}");
-                }
-
                 // StreamNameと一致するものを探す（nameまたはtype）
                 StreamInfo targetStream = null;
                 foreach (var stream in results)
@@ -102,7 +84,6 @@ namespace LSL4Unity.Samples.SimpleInlet
                     if (stream.name() == StreamName || stream.type() == StreamName)//stream.type() == bitalimoのdivicename
                     {
                         targetStream = stream;
-                        Debug.Log($"[LSL] Matched stream: Name='{stream.name()}', Type='{stream.type()}'");
                         break;
                     }
                 }
@@ -114,17 +95,9 @@ namespace LSL4Unity.Samples.SimpleInlet
                     targetStream = results[0];
                 }
 
-                Debug.Log($"[LSL] Creating inlet for stream: '{targetStream.name()}'");
                 inlet = new StreamInlet(targetStream);
-
                 channelCount = inlet.info().channel_count();
                 samplingRate = (float)inlet.info().nominal_srate();
-
-                Debug.Log($"[LSL] Inlet created successfully!");
-                Debug.Log($"  Stream Name: {inlet.info().name()}");
-                Debug.Log($"  Stream Type: {inlet.info().type()}");
-                Debug.Log($"  Channel Count: {channelCount}");
-                Debug.Log($"  Sampling Rate: {samplingRate} Hz");
 
                 int buf_samples = (int)Mathf.Ceil((float)(samplingRate * max_chunk_duration));
                 data_buffer = new float[buf_samples, channelCount];
@@ -134,8 +107,6 @@ namespace LSL4Unity.Samples.SimpleInlet
 
                 isConnected = true;
                 errorMessage = "";
-
-                Debug.Log($"✅ [LSL] Connected successfully to '{StreamName}'");
             }
             catch (System.Exception e)
             {
@@ -169,27 +140,6 @@ namespace LSL4Unity.Samples.SimpleInlet
                     }
 
                     receivedSamples += samples_returned;
-
-                    // デバッグ: 配列インデックスとチャンネル番号を明示
-                    if (receivedSamples >= 100 && receivedSamples <= 110)
-                    {
-                        Debug.Log($"===== Sample #{receivedSamples} =====");
-                        Debug.Log($"channelCount = {channelCount}");
-                        Debug.Log($"samples_returned = {samples_returned}");
-                        Debug.Log($"lastIndex = {lastIndex}");
-
-                        for (int ch = 0; ch < channelCount; ch++)
-                        {
-                            Debug.Log($"  data_buffer[{lastIndex}, {ch}] = {data_buffer[lastIndex, ch]:F6} → latestValues[{ch}] = {latestValues[ch]:F6}");
-                        }
-                        Debug.Log("==================");
-                    }
-
-                    // 定期的にログ出力（1000Hzで表示）
-                    if (showConsoleLog && receivedSamples % 1 == 0)
-                    {
-                        LogData();
-                    }
                 }
             }
             catch (System.Exception e)
@@ -246,7 +196,6 @@ namespace LSL4Unity.Samples.SimpleInlet
         {
             if (inlet != null)
             {
-                Debug.Log("[LSL] Closing inlet...");
                 inlet.close_stream();
                 inlet = null;
             }

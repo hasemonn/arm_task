@@ -650,7 +650,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 444418176}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: cf98531de5d4a23479f1c6d0e3217f3a, type: 3}
   m_Name: 
@@ -693,7 +693,7 @@ MonoBehaviour:
   countdownText: {fileID: 1748051680}
   totalTrials: 10
   initialFreezeDuration: 1
-  movementDuration: 3
+  movementDuration: 5
   freezeDuration: 1
   markerSize: 0.05
   enableLogging: 1
@@ -753,18 +753,18 @@ MonoBehaviour:
   link1: {fileID: 20994674}
   link2: {fileID: 298617490}
   endEffector: {fileID: 257724092}
-  speedMultiplier: 1
+  speedMultiplier: 2.16
   maxRotationSpeed: 90
-  joint1MinAngle: -30
-  joint1MaxAngle: 80
+  joint1MinAngle: -25
+  joint1MaxAngle: 75
   joint2MinAngle: 0
   joint2MaxAngle: 160
   joint1RotationAxis: {x: 1, y: 0, z: 0}
   joint2RotationAxis: {x: 0, y: 0, z: 1}
-  joint1BendChannel: 1
-  joint1ExtendChannel: 2
-  joint2BendChannel: 3
-  joint2ExtendChannel: 4
+  joint1UpChannel: 1
+  joint2BendChannel: 2
+  joint2ExtendChannel: 3
+  joint1ConstantDownSpeed: 10
   activationThreshold: 0
   dominanceThreshold: 0
   showDebugGUI: 1
@@ -1443,6 +1443,7 @@ GameObject:
   - component: {fileID: 1387188572}
   - component: {fileID: 1387188574}
   - component: {fileID: 1387188573}
+  - component: {fileID: 1387188575}
   m_Layer: 0
   m_Name: UDPsend
   m_TagString: Untagged
@@ -1510,6 +1511,34 @@ MonoBehaviour:
   maxDistance: 0.5
   updateInterval: 0.01
   markerTask: {fileID: 444418179}
+  logSentData: 1
+--- !u!114 &1387188575
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1387188570}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 27e446a383a28394880af8197ce0e274, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  nucleoIP: 192.168.2.70
+  nucleoPort: 55555
+  channel0_level: 0
+  channel1_level: 0
+  channel2_level: 0
+  channel3_level: 0
+  channel4_level: 0
+  channel5_level: 0
+  channel6_level: 0
+  channel7_level: 0
+  channel8_level: 0
+  channel9_level: 0
+  vibrationIntensity: 1
+  autoSendOnChange: 1
+  autoSendInterval: 0.01
   logSentData: 1
 --- !u!1 &1396408850
 GameObject:
@@ -1819,12 +1848,12 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1751610596}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 43d064829834cb2428d22501b8d8259f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  jointController: {fileID: 0}
+  jointController: {fileID: 455496912}
   ball: {fileID: 257724092}
   ballRenderer: {fileID: 257724090}
   leftHandTransform: {fileID: 850463572}
@@ -1851,35 +1880,36 @@ MonoBehaviour:
     joint1Angle: 25
     joint2Angle: 110
   targetBLeftPositions:
-  - {x: 0.3, y: 0.8, z: 0.25}
+  - {x: -0.25, y: 0.55, z: 0.25}
   - {x: -0.3, y: 0.5, z: 0.2}
   - {x: 0.2, y: 0.6, z: 0.1}
   - {x: 0.3, y: 0.9, z: 0.2}
-  - {x: -0.2, y: 0.7, z: 0.1}
-  - {x: -0.3, y: 0.6, z: 0.25}
+  - {x: -0.2, y: 0.6, z: 0.1}
+  - {x: -0.3, y: 0.5, z: 0.25}
   targetBRightPositions:
   - {x: -0.3, y: 1.2, z: 0.3}
   - {x: 0.2, y: 0.5, z: 0.15}
   - {x: 0, y: 1.5, z: 0.1}
   - {x: 0.2, y: 0.4, z: 0.2}
-  - {x: 0.3, y: 0.6, z: 0.15}
-  - {x: 0.2, y: 0.4, z: 0.1}
+  - {x: 0.3, y: 0.4, z: 0.15}
+  - {x: 0.2, y: 0.5, z: 0.1}
   trialHandPatterns: 000000000100000000000000010000000200000002000000
   countdownText: {fileID: 1748051680}
   totalTrials: 6
+  trialTimeLimit: 30
   targetAScale: 2.5
   targetBSizeLeft: {x: 0.1, y: 0.1, z: 0.1}
   targetBSizeRight: {x: 0.1, y: 0.1, z: 0.1}
   dwellTime: 1
   contactThreshold: 0.15
-  contactThresholdBothHands: 0.3
+  contactThresholdBothHands: 0.15
   targetAColor: {r: 0, g: 1, b: 0, a: 1}
   targetBLeftColor: {r: 1, g: 0, b: 0, a: 1}
   targetBRightColor: {r: 0, g: 0, b: 1, a: 1}
   highlightBallColor: {r: 1, g: 0.5, b: 0, a: 1}
   highlightLeftHandColor: {r: 1, g: 0.5, b: 0, a: 1}
   highlightRightHandColor: {r: 1, g: 0.5, b: 0, a: 1}
-  enableLogging: 0
+  enableLogging: 1
   saveDestination: 0
   subFolderName: DualTask
 --- !u!1 &1808495976

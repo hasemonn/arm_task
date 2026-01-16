@@ -52,11 +52,12 @@ public class MarkerTask : MonoBehaviour
     
     [Header("Data Logging")]
     public bool enableLogging = true;
-    public SaveDestination saveDestination = SaveDestination.KP;
+    public SaveDestination saveDestination = SaveDestination.FB無し;
     public string subFolderName = "";
 
     public enum SaveDestination
     {
+        FB無し,
         KP,
         KR
     }
@@ -65,14 +66,16 @@ public class MarkerTask : MonoBehaviour
     private Vector3 currentTargetPosition;
     private float targetShoulderPitch;
     private float targetElbowAngle;
-    
+    private int currentPatternIndex; // 現在使用中のパターンインデックス
+
     // マーカーオブジェクト
     private GameObject currentMarker;
     public GameObject CurrentMarker => currentMarker; // KR_VibrationFeedbackから参照できるように
-    
+
     // タスク進行状態
     private int trialCount = 0;
     private bool taskRunning = false;
+    private bool isInMovementPhase = false; // 緑色の期間（動作中）かどうか
     private List<int> trialOrder;
 
     // KR Feedback用フラグ（KR_VibrationFeedbackがなくてもエラーにならない）
@@ -95,6 +98,7 @@ public class MarkerTask : MonoBehaviour
     private float actualPathLength = 0f;
     private Vector3 trialStartPosition;
     private float trialStartTime;
+    private float movementPhaseStartTime; // 緑色期間の開始時刻
     private float lastLogTime = 0f;
 
     // 微分計算の最小時間間隔（数値的破綻を防ぐ）
@@ -191,13 +195,17 @@ public class MarkerTask : MonoBehaviour
         {
             Debug.Log("MarkerTask: KR Feedback logging enabled");
         }
+
+        // バックグラウンドでも実行を継続（勝手にPauseにならない）
+        Application.runInBackground = true;
     }
-    
+
     void Update()
     {
         if (!taskRunning) return;
 
-        if (enableLogging && ball != null)
+        // 緑色の期間（動作中）のみデータをログ
+        if (enableLogging && ball != null && isInMovementPhase)
         {
             // 1000Hz (1ms間隔) でデータをサンプリング
             float currentTime = Time.time;
@@ -322,7 +330,6 @@ public class MarkerTask : MonoBehaviour
 
         // タスク開始フラグを立てる（KR FBが動作するように）
         taskRunning = true;
-        float trialStartTime = Time.time;
 
         // 初期位置で固定（黄色マーカー）
         if (jointController != null)
@@ -338,14 +345,22 @@ public class MarkerTask : MonoBehaviour
             jointController.UnfreezeArm();
         }
 
-        // マーカーを緑に変更（動作時）
+        // マーカーを緑に変更（動作時）& データロギング開始
         ChangeMarkerColor(Color.green);
+        isInMovementPhase = true; // 緑色期間開始
+        movementPhaseStartTime = Time.time; // 緑色期間の開始時刻
+        lastLogTime = Time.time; // サンプリングタイマーリセット
+        lastPosition = ball != null ? ball.position : Vector3.zero; // 初期位置リセット
+        actualPathLength = 0f; // パス長リセット
+        float movementStartTime = Time.time; // movementTime計算用
 
         statusMessage = $"Trial {trialCount}/{totalTrials} - Move to target";
         await UniTask.Delay(TimeSpan.FromSeconds(movementDuration), cancellationToken: cancellationToken);
 
-        // マーカーを赤に変更（ターゲット位置固定時）
+        // マーカーを赤に変更（ターゲット位置固定時）& データロギング停止
         ChangeMarkerColor(Color.red);
+        isInMovementPhase = false; // 緑色期間終了
+        float movementEndTime = Time.time; // 緑色期間終了時刻
 
         if (jointController != null)
         {
@@ -368,14 +383,15 @@ public class MarkerTask : MonoBehaviour
             jointController.UnfreezeArm();
         }
 
-        float movementTime = Time.time - trialStartTime;
+        // movementTime: 緑色の期間のみ（動作時間）
+        float movementTime = movementEndTime - movementStartTime;
 
         // 最終的な3D距離を計算してタスク成功判定
         Vector3 finalBallPos = ball != null ? ball.position : Vector3.zero;
         float finalDistance = Vector3.Distance(finalBallPos, currentTargetPosition);
         bool taskSuccess = finalDistance <= 0.05f;
 
-        SaveTrialSummary(trialIndex, movementTime, finalDistance, taskSuccess);
+        SaveTrialSummary(currentPatternIndex, movementTime, finalDistance, taskSuccess);
 
         if (currentMarker != null)
         {
@@ -473,6 +489,9 @@ public class MarkerTask : MonoBehaviour
             statusMessage = "ERROR: Controller or patterns missing";
             return;
         }
+
+        // 現在のパターンインデックスを保存
+        currentPatternIndex = patternIndex;
 
         JointAnglePattern selectedPattern = targetPatterns[patternIndex];
 
@@ -649,7 +668,7 @@ public class MarkerTask : MonoBehaviour
         StringBuilder csv = new StringBuilder();
 
         // DetailedにはFB情報を含めない（Summaryのみ）
-        csv.AppendLine("Timestamp,TrialNumber," +
+        csv.AppendLine("Timestamp," +
                       "TargetShoulderPitch,TargetElbowAngle," +
                       "TargetPosX,TargetPosY,TargetPosZ," +
                       "ActualPosX,ActualPosY,ActualPosZ," +
@@ -661,7 +680,7 @@ public class MarkerTask : MonoBehaviour
 
         foreach (var data in dataBuffer)
         {
-            csv.AppendLine($"{data.timestamp},{data.trialNumber}," +
+            csv.AppendLine($"{data.timestamp}," +
                           $"{data.targetShoulderPitch},{data.targetElbowAngle}," +
                           $"{data.targetPosition.x},{data.targetPosition.y},{data.targetPosition.z}," +
                           $"{data.actualPosition.x},{data.actualPosition.y},{data.actualPosition.z}," +
@@ -705,8 +724,8 @@ public class MarkerTask : MonoBehaviour
         float optimalPathLength = Vector3.Distance(trialStartPosition, currentTargetPosition);
         float pathEfficiency = optimalPathLength > 0 ? optimalPathLength / Mathf.Max(actualPathLength, 0.001f) : 0f;
 
-        // 試行開始からの経過時間（0～movementDuration秒の範囲）
-        float trialElapsedTime = Time.time - trialStartTime;
+        // 緑色期間の開始からの経過時間（0～約3秒）
+        float trialElapsedTime = Time.time - movementPhaseStartTime;
 
         // KR Feedback情報を取得（KR FBフラグが立っている期間のみ）
         int fbVibrator = 0;
@@ -877,6 +896,9 @@ public class MarkerTask : MonoBehaviour
 
         switch (saveDestination)
         {
+            case SaveDestination.FB無し:
+                basePath = Path.Combine(Application.dataPath, @"..\datafolder\nonFB");
+                break;
             case SaveDestination.KP:
                 basePath = Path.Combine(Application.dataPath, @"..\datafolder\KP");
                 break;
@@ -884,7 +906,7 @@ public class MarkerTask : MonoBehaviour
                 basePath = Path.Combine(Application.dataPath, @"..\datafolder\KR");
                 break;
             default:
-                basePath = Path.Combine(Application.dataPath, @"..\datafolder\KP");
+                basePath = Path.Combine(Application.dataPath, @"..\datafolder\nonFB");
                 break;
         }
 

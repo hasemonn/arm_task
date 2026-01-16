@@ -81,7 +81,6 @@ namespace LSL4Unity.Samples.SimpleInlet
                     enabled = false;
                 }
             }
-            Debug.Log($"[EMGSignalProcessor] Started in {mode} mode");
         }
 
 
@@ -93,12 +92,6 @@ namespace LSL4Unity.Samples.SimpleInlet
             for (int ch = 1; ch <= 4; ch++)
             {
                 rawValues[ch - 1] = emgSource.GetChannelValue(ch);
-            }
-
-            // デバッグ: 最初の100フレームでrawValuesをログ出力
-            if (Time.frameCount <= 100 && Time.frameCount % 10 == 0)
-            {
-                Debug.Log($"[EMGSignalProcessor Frame {Time.frameCount}] rawValues: [{rawValues[0]:F6}, {rawValues[1]:F6}, {rawValues[2]:F6}, {rawValues[3]:F6}]");
             }
 
             // 各チャンネルを処理
@@ -132,7 +125,6 @@ namespace LSL4Unity.Samples.SimpleInlet
                     if (rms > maxRMS[channelIndex])
                     {
                         maxRMS[channelIndex] = rms;
-                        Debug.Log($"[MaxCalibration] Ch{channelIndex + 1}: New maxRMS = {maxRMS[channelIndex]:F4}");
                     }
                     break;
 
@@ -141,7 +133,6 @@ namespace LSL4Unity.Samples.SimpleInlet
                     if (rms > thresholdRMS[channelIndex])
                     {
                         thresholdRMS[channelIndex] = rms;
-                        Debug.Log($"[ThresholdCalibration] Ch{channelIndex + 1}: New thresholdRMS = {thresholdRMS[channelIndex]:F4}");
                     }
                     break;
 
@@ -243,7 +234,6 @@ namespace LSL4Unity.Samples.SimpleInlet
                 maxRMS[i] = 0f;
                 thresholdRMS[i] = 0f;
             }
-            Debug.Log("[EMGSignalProcessor] Calibration values reset");
         }
 
 
