@@ -621,6 +621,7 @@ GameObject:
   m_Component:
   - component: {fileID: 444418178}
   - component: {fileID: 444418179}
+  - component: {fileID: 444418181}
   m_Layer: 0
   m_Name: MakerTask
   m_TagString: Untagged
@@ -658,47 +659,117 @@ MonoBehaviour:
   jointController: {fileID: 455496912}
   shoulderJoint: {fileID: 1396408851}
   elbowJoint: {fileID: 1999911902}
+  cylinder3: {fileID: 298617490}
   ball: {fileID: 257724092}
   targetPatterns:
   - patternName: Pattern1
-    joint1Angle: 42
-    joint2Angle: 118
+    joint1Angle: 0
+    joint2Angle: 5
   - patternName: Pattern2
-    joint1Angle: -12
-    joint2Angle: 24
+    joint1Angle: 0
+    joint2Angle: 16
   - patternName: Pattern3
-    joint1Angle: 68
-    joint2Angle: 155
+    joint1Angle: 0
+    joint2Angle: 32
   - patternName: Pattern4
     joint1Angle: 0
-    joint2Angle: 92
+    joint2Angle: 48
   - patternName: Pattern5
-    joint1Angle: -22
-    joint2Angle: 47
+    joint1Angle: 0
+    joint2Angle: 64
   - patternName: Pattern6
-    joint1Angle: 55
-    joint2Angle: 103
+    joint1Angle: 0
+    joint2Angle: 96
   - patternName: Pattern7
-    joint1Angle: 18
-    joint2Angle: 5
+    joint1Angle: 0
+    joint2Angle: 112
   - patternName: Pattern8
-    joint1Angle: -5
-    joint2Angle: 129
+    joint1Angle: 0
+    joint2Angle: 128
   - patternName: Pattern9
-    joint1Angle: 31
-    joint2Angle: 81
+    joint1Angle: 0
+    joint2Angle: 144
   - patternName: Pattern10
-    joint1Angle: 70
-    joint2Angle: 14
+    joint1Angle: 0
+    joint2Angle: 155
   countdownText: {fileID: 1748051680}
   totalTrials: 10
-  initialFreezeDuration: 1
-  movementDuration: 5
-  freezeDuration: 1
+  initialFreezeDuration: 2
+  movementDuration: 3
+  freezeDuration: 2
   markerSize: 0.05
   enableLogging: 1
-  saveDestination: 0
-  subFolderName: p1
+  saveDestination: 1
+  subFolderName: otuka1
+  enableKRFeedback: 1
+  nucleoIP: 192.168.2.70
+  nucleoPort: 55555
+  maxDistance: 0.5
+  krUpdateInterval: 0.02
+--- !u!114 &444418181
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 444418176}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7ee1f1defaec6c446a78dacfd3207708, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  shoulderJoint: {fileID: 1396408851}
+  elbowJoint: {fileID: 1999911902}
+  cylinder3: {fileID: 298617490}
+  ball: {fileID: 257724092}
+  targetPatterns:
+  - patternName: Pattern1
+    joint1Angle: 0
+    joint2Angle: 5
+  - patternName: Pattern2
+    joint1Angle: 0
+    joint2Angle: 16
+  - patternName: Pattern3
+    joint1Angle: 0
+    joint2Angle: 32
+  - patternName: Pattern4
+    joint1Angle: 0
+    joint2Angle: 48
+  - patternName: Pattern5
+    joint1Angle: 0
+    joint2Angle: 64
+  - patternName: Pattern6
+    joint1Angle: 0
+    joint2Angle: 96
+  - patternName: Pattern7
+    joint1Angle: 0
+    joint2Angle: 112
+  - patternName: Pattern8
+    joint1Angle: 0
+    joint2Angle: 128
+  - patternName: Pattern9
+    joint1Angle: 0
+    joint2Angle: 144
+  - patternName: Pattern10
+    joint1Angle: 0
+    joint2Angle: 155
+  countdownText: {fileID: 1748051680}
+  totalTrials: 10
+  initialFreezeDuration: 2
+  movementDuration: 3
+  freezeDuration: 4
+  markerSize: 0.05
+  enableKRFeedback: 1
+  nucleoIP: 192.168.2.70
+  nucleoPort: 55555
+  maxDistance: 0.5
+  krUpdateInterval: 0.01
+  vibrationDuration: 2
+  visualFeedbackDuration: 2
+  enableLogging: 0
+  saveDestination: 2
+  subFolderName: 
+  jointController: {fileID: 455496912}
 --- !u!1 &455496909
 GameObject:
   m_ObjectHideFlags: 0
@@ -756,15 +827,15 @@ MonoBehaviour:
   speedMultiplier: 2.16
   maxRotationSpeed: 90
   joint1MinAngle: -25
-  joint1MaxAngle: 75
+  joint1MaxAngle: 67.00391
   joint2MinAngle: 0
   joint2MaxAngle: 160
   joint1RotationAxis: {x: 1, y: 0, z: 0}
   joint2RotationAxis: {x: 0, y: 0, z: 1}
   joint1UpChannel: 1
-  joint2BendChannel: 2
-  joint2ExtendChannel: 3
-  joint1ConstantDownSpeed: 10
+  joint2BendChannel: 3
+  joint2ExtendChannel: 4
+  joint1ConstantDownSpeed: 0
   activationThreshold: 0
   dominanceThreshold: 0
   showDebugGUI: 1
@@ -1425,13 +1496,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1321051925}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.53729963, y: 0, z: 0, w: 0.8433915}
-  m_LocalPosition: {x: 0.239, y: 0.44, z: -0.355}
+  m_LocalRotation: {x: 0.7071068, y: 0, z: 0, w: 0.7071068}
+  m_LocalPosition: {x: 0.239, y: 0.52, z: -0.355}
   m_LocalScale: {x: 0.05, y: 0.2, z: 0.05}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 65, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 90, y: 0, z: 0}
 --- !u!1 &1387188570
 GameObject:
   m_ObjectHideFlags: 0
@@ -1500,7 +1571,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1387188570}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 157bce1c6db66e3409502a1798ab7548, type: 3}
   m_Name: 
@@ -1508,10 +1579,11 @@ MonoBehaviour:
   nucleoIP: 192.168.2.70
   nucleoPort: 55555
   enableKRFeedback: 1
-  maxDistance: 0.5
+  maxDistance: 0.2
   updateInterval: 0.01
   markerTask: {fileID: 444418179}
   logSentData: 1
+  debugMode: 1
 --- !u!114 &1387188575
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1519,7 +1591,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1387188570}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 27e446a383a28394880af8197ce0e274, type: 3}
   m_Name: 
@@ -1909,7 +1981,7 @@ MonoBehaviour:
   highlightBallColor: {r: 1, g: 0.5, b: 0, a: 1}
   highlightLeftHandColor: {r: 1, g: 0.5, b: 0, a: 1}
   highlightRightHandColor: {r: 1, g: 0.5, b: 0, a: 1}
-  enableLogging: 1
+  enableLogging: 0
   saveDestination: 0
   subFolderName: DualTask
 --- !u!1 &1808495976
@@ -1942,13 +2014,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   mode: 2
-  rmsWindowSize: 100
-  maxRMS:
+  iemgWindowSize: 20
+  iemgScalingFactor: 0.0000001
+  maxIEMG:
   - 0
   - 0
   - 0
   - 0
-  thresholdRMS:
+  thresholdIEMG:
   - 0
   - 0
   - 0
@@ -1959,12 +2032,12 @@ MonoBehaviour:
   - 0
   - 0
   - 0
-  rmsValues:
+  iemgValues:
   - 0
   - 0
   - 0
   - 0
-  thresholdedRMS:
+  thresholdedIEMG:
   - 0
   - 0
   - 0
@@ -1975,6 +2048,11 @@ MonoBehaviour:
   - 0
   - 0
   smoothedValues:
+  - 0
+  - 0
+  - 0
+  - 0
+  accumulatedIEMG:
   - 0
   - 0
   - 0
@@ -2064,6 +2142,10 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 11400002, guid: ce816f2e6abb0504092c23ed9b970dfd, type: 3}
+      propertyPath: m_Enabled
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 11400002, guid: ce816f2e6abb0504092c23ed9b970dfd, type: 3}
       propertyPath: _trackingOriginType
       value: 0
       objectReference: {fileID: 0}
@@ -2087,13 +2169,17 @@ PrefabInstance:
       propertyPath: EnableLinearMovement
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 11400020, guid: ce816f2e6abb0504092c23ed9b970dfd, type: 3}
+      propertyPath: m_Enabled
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 11462408, guid: ce816f2e6abb0504092c23ed9b970dfd, type: 3}
       propertyPath: m_Enabled
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 11493974, guid: ce816f2e6abb0504092c23ed9b970dfd, type: 3}
       propertyPath: m_Enabled
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 14300000, guid: ce816f2e6abb0504092c23ed9b970dfd, type: 3}
       propertyPath: m_Enabled
@@ -2114,6 +2200,10 @@ PrefabInstance:
     - target: {fileID: 14300000, guid: ce816f2e6abb0504092c23ed9b970dfd, type: 3}
       propertyPath: m_MinMoveDistance
       value: 0.001
+      objectReference: {fileID: 0}
+    - target: {fileID: 114814064252544740, guid: ce816f2e6abb0504092c23ed9b970dfd, type: 3}
+      propertyPath: m_Enabled
+      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

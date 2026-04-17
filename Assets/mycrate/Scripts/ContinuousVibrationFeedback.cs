@@ -27,6 +27,9 @@ public class ContinuousVibrationFeedback : MonoBehaviour
     [Tooltip("手先のTransform（デバッグ表示用）")]
     public Transform endEffector;
 
+    [Header("KP VS randam FB")]
+
+
     [Header("Arm Parameters")]
     [Tooltip("上腕の長さ (m)")]
     public float upperArmLength = 0.3f;

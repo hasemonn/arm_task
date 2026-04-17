@@ -6,7 +6,7 @@ using UnityEngine;
 namespace LSL4Unity.Samples.SimpleInlet
 {
     /// <summary>
-    /// EMG信号処理:RMS、閾値カット、正規化、平滑化
+    /// EMG信号処理:iEMG（積分EMG）、閾値カット、正規化、平滑化
     /// キャリブレーションと測定モード付き
     /// </summary>
     public class EMGSignalProcessor : MonoBehaviour
@@ -15,16 +15,20 @@ namespace LSL4Unity.Samples.SimpleInlet
         [Header("モード変更")]
         public ProcessingMode mode = ProcessingMode.Measurement;
 
-        [Header("RMS Window Settings")]
-        [Tooltip("RMS計算用のサンプル数(例: 100サンプル = 0.1秒@1000Hz)")]
-        public int rmsWindowSize = 100;
+        [Header("iEMG Window Settings")]
+        [Tooltip("iEMG計算用のサンプル数(例: 100サンプル = 0.1秒@1000Hz)")]
+        public int iemgWindowSize = 100;
 
-        [Header("Calibration Values (Read Only)")]
-        [Tooltip("Ch1-4の最大RMS値")]
-        public float[] maxRMS = new float[4];
+        [Header("iEMG Scaling")]
+        [Tooltip("積分値のスケーリングファクター（デフォルト: 0.001）")]
+        public float iemgScalingFactor = 0.001f;
 
-        [Tooltip("Ch1-4のカット閾値")]
-        public float[] thresholdRMS = new float[4];
+        [Header("Calibration Values")]
+        [Tooltip("Ch1-4の最大iEMG値（MVC: 最大随意収縮時）\nMaxCalibrationモードで自動取得 or インスペクターで手動設定")]
+        public float[] maxIEMG = new float[4];
+
+        [Tooltip("Ch1-4の閾値iEMG値（安静時ベースライン）\nThresholdCalibrationモードで自動取得 or インスペクターで手動設定")]
+        public float[] thresholdIEMG = new float[4];
 
         [Header("Smoothing Settings")]
         [Tooltip("平滑化フィルタのウィンドウサイズ")]
@@ -34,17 +38,21 @@ namespace LSL4Unity.Samples.SimpleInlet
         [Tooltip("Ch1-4の生データ")]
         public float[] rawValues = new float[4];
 
-        [Tooltip("Ch1-4のRMS値")]
-        public float[] rmsValues = new float[4];
+        [Tooltip("Ch1-4のiEMG値")]
+        public float[] iemgValues = new float[4];
 
-        [Tooltip("Ch1-4の閾値カット後RMS")]
-        public float[] thresholdedRMS = new float[4];
+        [Tooltip("Ch1-4の閾値カット後iEMG")]
+        public float[] thresholdedIEMG = new float[4];
 
         [Tooltip("Ch1-4の正規化値(0-100%)")]
         public float[] normalizedValues = new float[4];
 
         [Tooltip("Ch1-4の平滑化後の値(0-100%)")]
         public float[] smoothedValues = new float[4];
+
+        [Header("Accumulated iEMG (Read Only)")]
+        [Tooltip("Ch1-4の蓄積されたiEMG値")]
+        public float[] accumulatedIEMG = new float[4];
 
         [Header("References")]
         public EMGDebugDisplay emgSource;
@@ -107,52 +115,61 @@ namespace LSL4Unity.Samples.SimpleInlet
 
             // 1. スライディングウィンドウに追加
             dataBuffers[channelIndex].Enqueue(rawValue);
-            if (dataBuffers[channelIndex].Count > rmsWindowSize)
+            if (dataBuffers[channelIndex].Count > iemgWindowSize)
             {
                 dataBuffers[channelIndex].Dequeue();
-
             }
 
-            // 2. RMS計算
-            float rms = CalculateRMS(dataBuffers[channelIndex]);
-            rmsValues[channelIndex] = rms;
+            // 2. iEMG計算（積分EMG）
+            float iemg = CalculateIEMG(dataBuffers[channelIndex]);
+            iemgValues[channelIndex] = iemg;
+
+            // 3. スケーリング適用（0.001倍で小さくする）
+            float scaledIEMG = iemg * iemgScalingFactor;
+
+            // 4. 蓄積（積分...で蓄積）
+            accumulatedIEMG[channelIndex] += scaledIEMG;
 
             // モード別処理
+            // 注意: キャリブレーション値(maxIEMG, thresholdIEMG)は各モードでのみ更新される
+            // Measurementモードではキャリブレーション値は固定され、インスペクターで手動変更可能
             switch (mode)
             {
                 case ProcessingMode.MaxCalibration:
-                    // チャンネル毎の最大値を更新
-                    if (rms > maxRMS[channelIndex])
+                    // 最大随意収縮(MVC)時のiEMG値を記録
+                    // maxIEMGのみ更新、thresholdIEMGは更新しない
+                    if (iemg > maxIEMG[channelIndex])
                     {
-                        maxRMS[channelIndex] = rms;
+                        maxIEMG[channelIndex] = iemg;
                     }
                     break;
 
                 case ProcessingMode.ThresholdCalibration:
-                    // チャンネル毎の閾値を更新
-                    if (rms > thresholdRMS[channelIndex])
+                    // 安静時（平常状態）のiEMG値を記録
+                    // thresholdIEMGのみ更新、maxIEMGは更新しない
+                    if (iemg > thresholdIEMG[channelIndex])
                     {
-                        thresholdRMS[channelIndex] = rms;
+                        thresholdIEMG[channelIndex] = iemg;
                     }
                     break;
 
-
                 case ProcessingMode.Measurement:
-                    // 3. 閾値カット(チャンネル毎)
-                    float thresholded = (rms <= thresholdRMS[channelIndex]) ? 0f : rms;
-                    thresholdedRMS[channelIndex] = thresholded;
+                    // 測定モード: maxIEMGとthresholdIEMGは固定値として使用
+                    // インスペクターで手動変更した値もここで反映される
 
+                    // 5. 閾値カット(チャンネル毎)
+                    float thresholded = (iemg <= thresholdIEMG[channelIndex]) ? 0f : iemg;
+                    thresholdedIEMG[channelIndex] = thresholded;
 
-                    // 4. 正規化(0-100%)チャンネル毎
+                    // 6. 正規化(0-100%)チャンネル毎
                     float normalized = 0f;
-                    if (maxRMS[channelIndex] > thresholdRMS[channelIndex] && thresholded > 0f)
+                    if (maxIEMG[channelIndex] > thresholdIEMG[channelIndex] && thresholded > 0f)
                     {
-                        normalized = Mathf.Clamp01((thresholded - thresholdRMS[channelIndex]) / (maxRMS[channelIndex] - thresholdRMS[channelIndex])) * 100f;
+                        normalized = Mathf.Clamp01((thresholded - thresholdIEMG[channelIndex]) / (maxIEMG[channelIndex] - thresholdIEMG[channelIndex])) * 100f;
                     }
                     normalizedValues[channelIndex] = normalized;
 
-
-                    // 5. 平滑化
+                    // 7. 平滑化
                     smoothBuffers[channelIndex].Enqueue(normalized);
                     if (smoothBuffers[channelIndex].Count > smoothWindowSize)
                     {
@@ -160,25 +177,24 @@ namespace LSL4Unity.Samples.SimpleInlet
                     }
                     smoothedValues[channelIndex] = CalculateAverage(smoothBuffers[channelIndex]);
                     break;
-
             }
-
         }
 
 
 
-        float CalculateRMS(Queue<float> buffer)
+        float CalculateIEMG(Queue<float> buffer)
         {
             if (buffer.Count == 0)
                 return 0f;
 
             float sum = 0f;
 
+            // 絶対値の積分（平均）
             foreach (float value in buffer)
             {
-                sum += value * value;
+                sum += Mathf.Abs(value);
             }
-            return Mathf.Sqrt(sum / buffer.Count);
+            return sum / buffer.Count;
         }
 
 
@@ -216,11 +232,26 @@ namespace LSL4Unity.Samples.SimpleInlet
         }
 
 
-        public float GetRMSValue(int channel)
+        public float GetIEMGValue(int channel)
         {
             if (channel >= 1 && channel <= 4)
-                return rmsValues[channel - 1];
+                return iemgValues[channel - 1];
             return 0f;
+        }
+
+        public float GetAccumulatedIEMG(int channel)
+        {
+            if (channel >= 1 && channel <= 4)
+                return accumulatedIEMG[channel - 1];
+            return 0f;
+        }
+
+        public void ResetAccumulatedIEMG()
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                accumulatedIEMG[i] = 0f;
+            }
         }
 
 
@@ -231,9 +262,16 @@ namespace LSL4Unity.Samples.SimpleInlet
         {
             for (int i = 0; i < 4; i++)
             {
-                maxRMS[i] = 0f;
-                thresholdRMS[i] = 0f;
+                maxIEMG[i] = 0f;
+                thresholdIEMG[i] = 0f;
             }
+        }
+
+        // 蓄積値をリセット
+        [ContextMenu("Reset Accumulated iEMG")]
+        public void ResetAccumulated()
+        {
+            ResetAccumulatedIEMG();
         }
 
 
@@ -256,27 +294,34 @@ namespace LSL4Unity.Samples.SimpleInlet
             yPos += 35;
 
             // キャリブレーション値表示(Ch1-4)
-            GUI.Label(new Rect(xPos, yPos, 280, 25), "Max RMS:", labelStyle);
+            GUIStyle maxStyle = new GUIStyle(labelStyle);
+            GUIStyle thresholdStyle = new GUIStyle(labelStyle);
+
+            // 現在更新中の値をハイライト
+            if (mode == ProcessingMode.MaxCalibration)
+                maxStyle.normal.textColor = Color.yellow;
+            if (mode == ProcessingMode.ThresholdCalibration)
+                thresholdStyle.normal.textColor = Color.yellow;
+
+            GUI.Label(new Rect(xPos, yPos, 280, 25), "Max iEMG (MVC):", maxStyle);
             yPos += 25;
 
             for (int i = 0; i < 4; i++)
             {
-                GUI.Label(new Rect(xPos + 10, yPos, 270, 20), $"Ch{i + 1}: {maxRMS[i]:F4}", labelStyle);
+                GUI.Label(new Rect(xPos + 10, yPos, 270, 20), $"Ch{i + 1}: {maxIEMG[i]:F4}", maxStyle);
                 yPos += 20;
             }
             yPos += 10;
 
-
-            GUI.Label(new Rect(xPos, yPos, 280, 25), "Threshold RMS:", labelStyle);
+            GUI.Label(new Rect(xPos, yPos, 280, 25), "Threshold iEMG (Rest):", thresholdStyle);
             yPos += 25;
 
             for (int i = 0; i < 4; i++)
             {
-                GUI.Label(new Rect(xPos + 10, yPos, 270, 20), $"Ch{i + 1}: {thresholdRMS[i]:F4}", labelStyle);
+                GUI.Label(new Rect(xPos + 10, yPos, 270, 20), $"Ch{i + 1}: {thresholdIEMG[i]:F4}", thresholdStyle);
                 yPos += 20;
             }
             yPos += 10;
-
 
             // 測定モードの場合、処理済みデータを表示
             if (mode == ProcessingMode.Measurement)
@@ -287,6 +332,16 @@ namespace LSL4Unity.Samples.SimpleInlet
                 {
                     string channelInfo = $"Ch{i + 1}: {smoothedValues[i]:F1}%";
                     GUI.Label(new Rect(xPos + 10, yPos, 270, 20), channelInfo, labelStyle);
+                    yPos += 20;
+                }
+                yPos += 10;
+
+                // 蓄積iEMG値を表示
+                GUI.Label(new Rect(xPos, yPos, 280, 25), "Accumulated iEMG:", labelStyle);
+                yPos += 25;
+                for (int i = 0; i < 4; i++)
+                {
+                    GUI.Label(new Rect(xPos + 10, yPos, 270, 20), $"Ch{i + 1}: {accumulatedIEMG[i]:F6}", labelStyle);
                     yPos += 20;
                 }
             }

@@ -13,8 +13,8 @@ public class IndependentEMGJointController : MonoBehaviour
     [SerializeField] private ControlMode controlMode = ControlMode.EMG;
 
     [Header("Manual Control (Manual Mode Only)")]
-    [SerializeField, Range(-25f, 75f)] private float manualJoint1Angle = 75f;
-    [SerializeField, Range(-20f, 160f)] private float manualJoint2Angle = 0f;
+    [SerializeField, Range(-25f, 75f)] private float manualJoint1Angle = 0f;
+    [SerializeField, Range(-20f, 160f)] private float manualJoint2Angle = 80f;
 
     [Header("EMG Data Source (EMG Mode Only)")]
     [SerializeField] private EMGSignalProcessor emgProcessor;
@@ -149,8 +149,8 @@ public class IndependentEMGJointController : MonoBehaviour
         }
 
         // Reset target angles to initial position
-        joint1TargetAngle = 75f; // 初期位置: 75°
-        joint2TargetAngle = 0f;   // 初期位置: 0°
+        joint1TargetAngle = 0f;  // 初期位置: 0° (cylinder1,2が一直線)
+        joint2TargetAngle = 80f; // 初期位置: 80° (最大160°と最小0°の半分)
 
         isInitialized = true;
     }
@@ -230,37 +230,50 @@ public class IndependentEMGJointController : MonoBehaviour
     {
         float dt = Time.deltaTime;
 
+        // ==========================================
+        // TODO: joint1を復帰させる場合は以下のコメントアウトを解除
+        // ==========================================
+
         // Joint 1 Control: Up (extend) only + Constant down speed
-        float joint1UpRatio = GetChannelRatio(joint1UpChannel);
+        // float joint1UpRatio = GetChannelRatio(joint1UpChannel);
 
-        // Apply activation threshold
-        if (joint1UpRatio < activationThreshold) joint1UpRatio = 0f;
+        // // Apply activation threshold
+        // if (joint1UpRatio < activationThreshold) joint1UpRatio = 0f;
 
-        // Calculate up speed (negative direction, extend方向)
-        float joint1UpSpeed = 0f;
-        if (joint1UpRatio >= dominanceThreshold)
-        {
-            // Convert percentage to rotation speed (negative for up/extend)
-            float speedRatio = joint1UpRatio / 100f;
-            joint1UpSpeed = speedRatio * maxRotationSpeed * speedMultiplier;
-        }
+        // // Calculate up speed (negative direction, extend方向)
+        // float joint1UpSpeed = 0f;
+        // if (joint1UpRatio >= dominanceThreshold)
+        // {
+        //     // Convert percentage to rotation speed (negative for up/extend)
+        //     float speedRatio = joint1UpRatio / 100f;
+        //     joint1UpSpeed = speedRatio * maxRotationSpeed * speedMultiplier;
+        // }
 
-        // Total joint1 speed = constant down speed (positive) - up speed
-        // Down: positive, Up: negative
-        float joint1Speed = joint1ConstantDownSpeed - joint1UpSpeed;
+        // // Total joint1 speed = constant down speed (positive) - up speed
+        // // Down: positive, Up: negative
+        // float joint1Speed = joint1ConstantDownSpeed - joint1UpSpeed;
+
+        // Joint1を停止（速度を0に固定）
+        float joint1Speed = 0f;
 
         // Joint 2 Control
         float joint2BendRatio = GetChannelRatio(joint2BendChannel);
         float joint2ExtendRatio = GetChannelRatio(joint2ExtendChannel);
         float joint2Speed = CalculateJoyConSpeed(joint2BendRatio, joint2ExtendRatio);
 
-        // Joint 1
-        float j1Accel = (joint1Speed - joint1LastSpeed) / dt; // 加速度 = 速度差分 / 時間
-        Joint1Jerk = (j1Accel - joint1LastAccel) / dt;        // ジャーク = 加速度差分 / 時間
-        Joint1Acceleration = j1Accel;                         // プロパティ更新
+        // Joint 1 - 加速度とジャークの計算（停止中はコメントアウト）
+        // TODO: joint1を復帰させる場合は以下のコメントアウトを解除してください
+        // float j1Accel = (joint1Speed - joint1LastSpeed) / dt; // 加速度 = 速度差分 / 時間
+        // Joint1Jerk = (j1Accel - joint1LastAccel) / dt;        // ジャーク = 加速度差分 / 時間
+        // Joint1Acceleration = j1Accel;                         // プロパティ更新
+        // joint1LastSpeed = joint1Speed; // 次フレーム用に保存
+        // joint1LastAccel = j1Accel;
 
-        joint1LastSpeed = joint1Speed; // 次フレーム用に保存
-        joint1LastAccel = j1Accel;
+        // Joint1停止中は加速度・ジャークを0に設定
+        Joint1Jerk = 0f;
+        Joint1Acceleration = 0f;
+        joint1LastSpeed = 0f;
+        joint1LastAccel = 0f;
 
         // Joint 2
         float j2Accel = (joint2Speed - joint2LastSpeed) / dt;
@@ -271,7 +284,12 @@ public class IndependentEMGJointController : MonoBehaviour
         joint2LastAccel = j2Accel;
 
         // Update target angles based on speed (independent of initial rotation)
-        joint1TargetAngle += joint1Speed * Time.deltaTime;
+        // TODO: joint1を復帰させる場合は以下のコメントアウトを解除してください
+        // joint1TargetAngle += joint1Speed * Time.deltaTime;
+
+        // Joint1は現在の角度を維持（更新しない）
+        // joint1TargetAngle は変更しない
+
         joint2TargetAngle += joint2Speed * Time.deltaTime;
 
         // Clamp angles to limits
@@ -385,23 +403,30 @@ public class IndependentEMGJointController : MonoBehaviour
 
     void LogControlValues()
     {
-        float j1UpRatio = GetChannelRatio(joint1UpChannel);
+        // TODO: joint1を復帰させる場合は以下のコメントアウトを解除してください
+        // float j1UpRatio = GetChannelRatio(joint1UpChannel);
 
         float j2BendRatio = GetChannelRatio(joint2BendChannel);
         float j2ExtendRatio = GetChannelRatio(joint2ExtendChannel);
         float j2Speed = CalculateJoyConSpeed(j2BendRatio, j2ExtendRatio);
 
-        Debug.Log($"EMG Independent Control - J1: {joint1TargetAngle:F1}° (ConstDown:+{joint1ConstantDownSpeed:F1}°/s) | " +
+        // Joint1停止中は固定角度のみ表示
+        Debug.Log($"EMG Independent Control - J1: {joint1TargetAngle:F1}° (STOPPED) | " +
                   $"J2: {joint2TargetAngle:F1}° (speed:{j2Speed:F1}°/s) | " +
-                  $"Ch{joint1UpChannel}(Up): {j1UpRatio:F1}% | " +
                   $"Ch{joint2BendChannel}/Ch{joint2ExtendChannel}: {j2BendRatio:F1}%/{j2ExtendRatio:F1}%");
+
+        // TODO: joint1を復帰させる場合は上記のDebug.Logを以下に変換
+        // Debug.Log($"EMG Independent Control - J1: {joint1TargetAngle:F1}° (ConstDown:+{joint1ConstantDownSpeed:F1}°/s) | " +
+        //           $"J2: {joint2TargetAngle:F1}° (speed:{j2Speed:F1}°/s) | " +
+        //           $"Ch{joint1UpChannel}(Up): {j1UpRatio:F1}% | " +
+        //           $"Ch{joint2BendChannel}/Ch{joint2ExtendChannel}: {j2BendRatio:F1}%/{j2ExtendRatio:F1}%");
     }
 
     // Public methods for external access
     public void ResetJointPositions()
     {
-        joint1TargetAngle = 75f; // 初期位置: 75
-        joint2TargetAngle = 0f;   // 初期位置: 0°
+        joint1TargetAngle = 0f;  // 初期位置: 0° (cylinder1,2が一直線)
+        joint2TargetAngle = 80f; // 初期位置: 80° (最大160°と最小0°の半分)
         joint1LastSpeed = 0f;
         joint1LastAccel = 0f;
         joint2LastSpeed = 0f;
@@ -411,8 +436,8 @@ public class IndependentEMGJointController : MonoBehaviour
         // Reset manual angles if in manual mode
         if (controlMode == ControlMode.Manual)
         {
-            manualJoint1Angle = 75;
-            manualJoint2Angle = 0f;
+            manualJoint1Angle = 0f;
+            manualJoint2Angle = 80f;
         }
 
         // Apply FK to reset all positions

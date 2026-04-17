@@ -6,6 +6,9 @@ using System.Text;
 using System;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using System.Net;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
 
 public class MarkerTask : MonoBehaviour
 {
@@ -15,6 +18,7 @@ public class MarkerTask : MonoBehaviour
     [Header("Arm References")]
     public Transform shoulderJoint; // 肩関節
     public Transform elbowJoint; // 肘関節
+    public Transform cylinder3;     
     public Transform ball; // 腕の先端のボール
 
     [Header("Target Patterns")]
@@ -61,6 +65,13 @@ public class MarkerTask : MonoBehaviour
         KP,
         KR
     }
+
+    [Header("KR Feedback Settings")]
+    public bool enableKRFeedback = true;
+    public string nucleoIP = "192.168.2.70";
+    public int nucleoPort = 55555;
+    public float maxDistance = 0.5f;
+    public float krUpdateInterval = 0.02f;
     
     // 現在のターゲット情報 - 2DOF
     private Vector3 currentTargetPosition;
@@ -124,6 +135,12 @@ public class MarkerTask : MonoBehaviour
         public float finalDistance; // 最終的な3D距離
         public float averageFBIntensity; // KR条件時の平均FB強度
         public int finalFBVibrator; // KR条件時の最終振動子番号
+
+        // 追加指標
+        public float movementSmoothness; // RMSジャーク = sqrt(mean(ElbowJerk^2))
+        public int numberOfSubmovements; // 速度ピーク数
+        public float fbActivationRate; // KP条件: FB稼働率 = FB提示時間 / 5.0
+        public float movementDuringFB; // KP条件: FB中の平均動作量
     }
 
     [System.Serializable]
@@ -163,8 +180,11 @@ public class MarkerTask : MonoBehaviour
     }
     
     // KR Feedback参照（存在する場合のみ）
-    private UDPSender krFeedback;
+    private KR_VibrationFeedback krFeedback;
     private bool shouldLogKRFeedback = false;
+
+    // 腕とマーカーの表示/非表示用
+    private List<Renderer> armRenderers = new List<Renderer>();
 
     void Start()
     {
@@ -186,7 +206,7 @@ public class MarkerTask : MonoBehaviour
         }
 
         // KR Feedbackの有無をチェック
-        krFeedback = FindObjectOfType<UDPSender>();
+        krFeedback = FindObjectOfType<KR_VibrationFeedback>();
 
         // KRがアタッチされている、またはKRフォルダに保存する場合にFB強度を記録
         shouldLogKRFeedback = (krFeedback != null) || (saveDestination == SaveDestination.KR);
@@ -198,6 +218,64 @@ public class MarkerTask : MonoBehaviour
 
         // バックグラウンドでも実行を継続（勝手にPauseにならない）
         Application.runInBackground = true;
+
+        // 腕のRendererを収集（shoulderJoint, elbowJoint, ball以下のすべて）
+        CollectArmRenderers();
+    }
+
+    void CollectArmRenderers()
+    {
+        armRenderers.Clear();
+
+        AddRenderersToList(shoulderJoint);
+        AddRenderersToList(elbowJoint);
+        AddRenderersToList(cylinder3);
+        AddRenderersToList(ball);
+
+        Debug.Log($"[MarkerTask] Collected {armRenderers.Count} renderers for arm parts.");
+    }
+
+
+    void AddRenderersToList(Transform target)
+    {
+        if (target != null)
+        {
+            Renderer[] renderers = target.GetComponentsInChildren<Renderer>(true);
+            foreach (var r in renderers)
+            {
+                armRenderers.Add(r);
+            }
+        }
+    }
+
+    void HideArmAndMarker()
+    {
+        // 腕の全パーツ（cylinder, ball含む）を非表示
+        foreach (var renderer in armRenderers)
+        {
+            if (renderer != null) renderer.enabled = false;
+        }
+
+        // マーカー（ターゲット）を非表示
+        if (currentMarker != null)
+        {
+            currentMarker.SetActive(false);
+        }
+    }
+
+    void ShowArmAndMarker()
+    {
+        // 腕の全パーツを表示
+        foreach (var renderer in armRenderers)
+        {
+            if (renderer != null) renderer.enabled = true;
+        }
+
+        // マーカー（ターゲット）を表示
+        if (currentMarker != null)
+        {
+            currentMarker.SetActive(true);
+        }
     }
 
     void Update()
@@ -354,6 +432,9 @@ public class MarkerTask : MonoBehaviour
         actualPathLength = 0f; // パス長リセット
         float movementStartTime = Time.time; // movementTime計算用
 
+        // 緑色期間：腕とマーカーを非表示
+        HideArmAndMarker();
+
         statusMessage = $"Trial {trialCount}/{totalTrials} - Move to target";
         await UniTask.Delay(TimeSpan.FromSeconds(movementDuration), cancellationToken: cancellationToken);
 
@@ -366,6 +447,9 @@ public class MarkerTask : MonoBehaviour
         {
             jointController.FreezeArm();
         }
+
+        // フリーズ時：腕とマーカーを再表示（v2はKR無しなので即表示）
+        ShowArmAndMarker();
 
         // KR Feedbackフラグを立てる（振動開始）
         shouldProvideKRFeedback = true;
@@ -597,6 +681,12 @@ public class MarkerTask : MonoBehaviour
         int fbSampleCount = 0;
         int finalFBVibrator = 0;
 
+        // 新指標用の変数
+        float sumSquaredElbowJerk = 0f;
+        float fbActiveTime = 0f;
+        float totalMovementDuringFB = 0f;
+        int fbActiveCount = 0;
+
         foreach (var data in dataBuffer)
         {
             totalPositionError += data.positionError;
@@ -608,19 +698,41 @@ public class MarkerTask : MonoBehaviour
             );
             peakJerk = Mathf.Max(peakJerk, maxJerkThisFrame);
 
-            // KR条件時のFB強度を集計（振動があるデータのみ）
+            // MovementSmoothness計算用: ElbowJerk^2の合計
+            sumSquaredElbowJerk += data.elbowJerk * data.elbowJerk;
+
+            // KR/KP条件時のFB強度を集計（振動があるデータのみ）
             if (shouldLogKRFeedback && data.fbVibrator > 0)
             {
                 totalFBIntensity += data.fbIntensity;
                 fbSampleCount++;
                 // 最後のFB振動子を更新（FB期間中の最後）
                 finalFBVibrator = data.fbVibrator;
+
+                // FB稼働時間をカウント (1サンプル = 0.001秒)
+                fbActiveTime += LOG_INTERVAL;
+
+                // FB中の動作量（速度の絶対値）
+                totalMovementDuringFB += Mathf.Abs(data.elbowVelocity);
+                fbActiveCount++;
             }
         }
 
         float avgPositionError = totalPositionError / dataBuffer.Count;
         float avgJointSpaceError = totalJointSpaceError / dataBuffer.Count;
         float avgFBIntensity = fbSampleCount > 0 ? totalFBIntensity / fbSampleCount : 0f;
+
+        // MovementSmoothness = sqrt(mean(ElbowJerk^2))
+        float movementSmoothness = Mathf.Sqrt(sumSquaredElbowJerk / dataBuffer.Count);
+
+        // NumberOfSubmovements = 速度ピーク数
+        int numberOfSubmovements = CountVelocityPeaks();
+
+        // FBActivationRate = FB提示時間 / 5.0 (KP/KR条件のみ)
+        float fbActivationRate = shouldLogKRFeedback ? fbActiveTime / 5.0f : 0f;
+
+        // MovementDuringFB = FB中の平均動作量 (KP/KR条件のみ)
+        float movementDuringFB = (shouldLogKRFeedback && fbActiveCount > 0) ? totalMovementDuringFB / fbActiveCount : 0f;
 
         // 最適経路長(直線距離)
         float optimalPathLength = Vector3.Distance(trialStartPosition, currentTargetPosition);
@@ -643,11 +755,41 @@ public class MarkerTask : MonoBehaviour
             taskSuccess = taskSuccess,
             finalDistance = finalDistance,
             averageFBIntensity = avgFBIntensity,
-            finalFBVibrator = finalFBVibrator
+            finalFBVibrator = finalFBVibrator,
+            movementSmoothness = movementSmoothness,
+            numberOfSubmovements = numberOfSubmovements,
+            fbActivationRate = fbActivationRate,
+            movementDuringFB = movementDuringFB
         };
 
         trialSummaries.Add(summary);
         SaveTrialDetailedMotionCSV(trialCount, patternIndex);
+    }
+
+    /// <summary>
+    /// 速度ピークを数える（サブムーブメント数）
+    /// </summary>
+    int CountVelocityPeaks()
+    {
+        if (dataBuffer.Count < 3) return 0;
+
+        int peakCount = 0;
+        float minPeakHeight = 1.0f; // 最小ピーク高さ（度/秒）
+
+        for (int i = 1; i < dataBuffer.Count - 1; i++)
+        {
+            float prevVel = Mathf.Abs(dataBuffer[i - 1].elbowVelocity);
+            float currVel = Mathf.Abs(dataBuffer[i].elbowVelocity);
+            float nextVel = Mathf.Abs(dataBuffer[i + 1].elbowVelocity);
+
+            // ピーク検出: 前後より大きく、かつ閾値以上
+            if (currVel > prevVel && currVel > nextVel && currVel > minPeakHeight)
+            {
+                peakCount++;
+            }
+        }
+
+        return peakCount;
     }
 
     void SaveTrialDetailedMotionCSV(int trialNumber, int patternIndex)
@@ -669,25 +811,25 @@ public class MarkerTask : MonoBehaviour
 
         // DetailedにはFB情報を含めない（Summaryのみ）
         csv.AppendLine("Timestamp," +
-                      "TargetShoulderPitch,TargetElbowAngle," +
-                      "TargetPosX,TargetPosY,TargetPosZ," +
-                      "ActualPosX,ActualPosY,ActualPosZ," +
-                      "ActualShoulderPitch,ActualElbowAngle," +
+                      "TargetElbowAngle," +
+                      "TargetPosX,TargetPosZ," +
+                      "ActualPosX,ActualPosZ," +
+                      "ActualElbowAngle," +
                       "PositionError,JointSpaceError," +
-                      "ShoulderPitchVel,ElbowVel," +
-                      "ShoulderPitchJerk,ElbowJerk," +
+                      "ElbowVel," +
+                      "ElbowJerk," +
                       "PathLength,OptimalPathLength,PathEfficiency");
 
         foreach (var data in dataBuffer)
         {
             csv.AppendLine($"{data.timestamp}," +
-                          $"{data.targetShoulderPitch},{data.targetElbowAngle}," +
-                          $"{data.targetPosition.x},{data.targetPosition.y},{data.targetPosition.z}," +
-                          $"{data.actualPosition.x},{data.actualPosition.y},{data.actualPosition.z}," +
-                          $"{data.actualShoulderPitch},{data.actualElbowAngle}," +
+                          $"{data.targetElbowAngle}," +
+                          $"{data.targetPosition.x},{data.targetPosition.z}," +
+                          $"{data.actualPosition.x},{data.actualPosition.z}," +
+                          $"{data.actualElbowAngle}," +
                           $"{data.positionError},{data.jointSpaceError}," +
-                          $"{data.shoulderPitchVelocity},{data.elbowVelocity}," +
-                          $"{data.shoulderPitchJerk},{data.elbowJerk}," +
+                          $"{data.elbowVelocity}," +
+                          $"{data.elbowJerk}," +
                           $"{data.pathLength},{data.optimalPathLength},{data.pathEfficiency}");
         }
 
@@ -838,6 +980,7 @@ public class MarkerTask : MonoBehaviour
 
         string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
         SaveTrialSummaryCSV(folderPath, timestamp);
+        SaveOverallStatisticsCSV(folderPath, timestamp);
     }
 
     void SaveTrialSummaryCSV(string folderPath, string timestamp)
@@ -849,44 +992,196 @@ public class MarkerTask : MonoBehaviour
 
         StringBuilder csv = new StringBuilder();
 
-        // KR条件の場合はFB情報列を追加
+        // KR/KP条件の場合はFB情報列を追加
         if (shouldLogKRFeedback)
         {
-            csv.AppendLine("TrialNumber,PatternName,TargetJoint1,TargetJoint2," +
-                          "MovementTime,PathLength,PathEfficiency," +
+            csv.AppendLine("TrialNumber,PatternName,TargetJoint2," +
+                          "PathLength,PathEfficiency," +
                           "AveragePositionError,AverageJointSpaceError,PeakJerk,TaskSuccess,FinalDistance," +
+                          "MovementSmoothness,NumberOfSubmovements," +
+                          "FBActivationRate,MovementDuringFB," +
                           "AverageFBIntensity,FinalFBVibrator");
 
             foreach (var summary in trialSummaries)
             {
                 csv.AppendLine($"{summary.trialNumber},{summary.patternName}," +
-                              $"{summary.targetJoint1},{summary.targetJoint2}," +
-                              $"{summary.movementTime},{summary.pathLength},{summary.pathEfficiency}," +
+                              $"{summary.targetJoint2}," +
+                              $"{summary.pathLength},{summary.pathEfficiency}," +
                               $"{summary.averagePositionError},{summary.averageJointSpaceError}," +
                               $"{summary.peakJerk},{summary.taskSuccess},{summary.finalDistance}," +
+                              $"{summary.movementSmoothness},{summary.numberOfSubmovements}," +
+                              $"{summary.fbActivationRate},{summary.movementDuringFB}," +
                               $"{summary.averageFBIntensity},{summary.finalFBVibrator}");
             }
         }
         else
         {
-            csv.AppendLine("TrialNumber,PatternName,TargetJoint1,TargetJoint2," +
-                          "MovementTime,PathLength,PathEfficiency," +
-                          "AveragePositionError,AverageJointSpaceError,PeakJerk,TaskSuccess,FinalDistance");
+            csv.AppendLine("TrialNumber,PatternName,TargetJoint2," +
+                          "PathLength,PathEfficiency," +
+                          "AveragePositionError,AverageJointSpaceError,PeakJerk,TaskSuccess,FinalDistance," +
+                          "MovementSmoothness,NumberOfSubmovements");
 
             foreach (var summary in trialSummaries)
             {
                 csv.AppendLine($"{summary.trialNumber},{summary.patternName}," +
-                              $"{summary.targetJoint1},{summary.targetJoint2}," +
-                              $"{summary.movementTime},{summary.pathLength},{summary.pathEfficiency}," +
+                              $"{summary.targetJoint2}," +
+                              $"{summary.pathLength},{summary.pathEfficiency}," +
                               $"{summary.averagePositionError},{summary.averageJointSpaceError}," +
-                              $"{summary.peakJerk},{summary.taskSuccess},{summary.finalDistance}");
+                              $"{summary.peakJerk},{summary.taskSuccess},{summary.finalDistance}," +
+                              $"{summary.movementSmoothness},{summary.numberOfSubmovements}");
             }
         }
 
         File.WriteAllText(filepath, csv.ToString());
     }
 
-    
+    void SaveOverallStatisticsCSV(string folderPath, string timestamp)
+    {
+        if (trialSummaries.Count == 0) return;
+
+        string filename = $"OverallStatistics_{timestamp}.csv";
+        string filepath = Path.Combine(folderPath, filename);
+
+        StringBuilder csv = new StringBuilder();
+
+        // 安定性指標: ConsistencyIndex
+        float consistencyIndex_PathLength = CalculateStandardDeviation(trialSummaries, s => s.pathLength);
+        float consistencyIndex_PositionError = CalculateStandardDeviation(trialSummaries, s => s.averagePositionError);
+
+        // 熟達度指標: TaskMasteryLevel
+        int successCount = 0;
+        foreach (var summary in trialSummaries)
+        {
+            if (summary.taskSuccess) successCount++;
+        }
+        float successRate = (float)successCount / trialSummaries.Count;
+        float errorVariability = CalculateStandardDeviation(trialSummaries, s => s.averagePositionError);
+        float maxError = CalculateMax(trialSummaries, s => s.averagePositionError);
+        float normalizedErrorVariability = maxError > 0 ? errorVariability / maxError : 0f;
+        float taskMasteryLevel = successRate * (1f - normalizedErrorVariability);
+
+        // FB効果: FBLearningCorrelation (KP/KR条件のみ)
+        float fbLearningCorrelation = 0f;
+        if (shouldLogKRFeedback && trialSummaries.Count > 1)
+        {
+            fbLearningCorrelation = CalculateFBLearningCorrelation();
+        }
+
+        // CSV出力
+        csv.AppendLine("Metric,Value");
+        csv.AppendLine($"ConsistencyIndex_PathLength,{consistencyIndex_PathLength}");
+        csv.AppendLine($"ConsistencyIndex_PositionError,{consistencyIndex_PositionError}");
+        csv.AppendLine($"SuccessRate,{successRate}");
+        csv.AppendLine($"TaskMasteryLevel,{taskMasteryLevel}");
+
+        if (shouldLogKRFeedback)
+        {
+            csv.AppendLine($"FBLearningCorrelation,{fbLearningCorrelation}");
+        }
+
+        File.WriteAllText(filepath, csv.ToString());
+    }
+
+    /// <summary>
+    /// 標準偏差を計算
+    /// </summary>
+    float CalculateStandardDeviation(List<TrialSummary> summaries, System.Func<TrialSummary, float> selector)
+    {
+        if (summaries.Count == 0) return 0f;
+
+        float mean = 0f;
+        foreach (var summary in summaries)
+        {
+            mean += selector(summary);
+        }
+        mean /= summaries.Count;
+
+        float variance = 0f;
+        foreach (var summary in summaries)
+        {
+            float diff = selector(summary) - mean;
+            variance += diff * diff;
+        }
+        variance /= summaries.Count;
+
+        return Mathf.Sqrt(variance);
+    }
+
+    /// <summary>
+    /// 最大値を計算
+    /// </summary>
+    float CalculateMax(List<TrialSummary> summaries, System.Func<TrialSummary, float> selector)
+    {
+        if (summaries.Count == 0) return 0f;
+
+        float max = float.MinValue;
+        foreach (var summary in summaries)
+        {
+            float value = selector(summary);
+            if (value > max) max = value;
+        }
+        return max;
+    }
+
+    /// <summary>
+    /// FB学習相関を計算: correlation(FBIntensity, PerformanceGain)
+    /// PerformanceGain = 試行間のエラー減少量
+    /// </summary>
+    float CalculateFBLearningCorrelation()
+    {
+        if (trialSummaries.Count < 2) return 0f;
+
+        List<float> fbIntensities = new List<float>();
+        List<float> performanceGains = new List<float>();
+
+        for (int i = 1; i < trialSummaries.Count; i++)
+        {
+            float fbIntensity = trialSummaries[i - 1].averageFBIntensity;
+            float performanceGain = trialSummaries[i - 1].averagePositionError - trialSummaries[i].averagePositionError;
+
+            fbIntensities.Add(fbIntensity);
+            performanceGains.Add(performanceGain);
+        }
+
+        return CalculateCorrelation(fbIntensities, performanceGains);
+    }
+
+    /// <summary>
+    /// 相関係数を計算
+    /// </summary>
+    float CalculateCorrelation(List<float> x, List<float> y)
+    {
+        if (x.Count != y.Count || x.Count == 0) return 0f;
+
+        float meanX = 0f, meanY = 0f;
+        for (int i = 0; i < x.Count; i++)
+        {
+            meanX += x[i];
+            meanY += y[i];
+        }
+        meanX /= x.Count;
+        meanY /= y.Count;
+
+        float numerator = 0f;
+        float sumSquaredX = 0f;
+        float sumSquaredY = 0f;
+
+        for (int i = 0; i < x.Count; i++)
+        {
+            float diffX = x[i] - meanX;
+            float diffY = y[i] - meanY;
+            numerator += diffX * diffY;
+            sumSquaredX += diffX * diffX;
+            sumSquaredY += diffY * diffY;
+        }
+
+        float denominator = Mathf.Sqrt(sumSquaredX * sumSquaredY);
+        if (denominator == 0f) return 0f;
+
+        return numerator / denominator;
+    }
+
+
     /// <summary>
     /// データフォルダのパスを取得
     /// </summary>

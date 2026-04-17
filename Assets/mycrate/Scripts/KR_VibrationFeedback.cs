@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Net;
 using System.Net.Sockets;
 using System;
@@ -6,11 +6,10 @@ using System.Collections;
 using System.Runtime.InteropServices;
 
 /// <summary>
-/// UDP sender for individual vibrator control (KR feedback)
-/// Supports sending commands to individual vibrators with specific intensity and duration
-/// Monitors MarkerTask and provides KR feedback after freeze duration
+/// KR Feedback: MarkerTask終了時（freeze期間）に誤差方向と距離を振動で提示
+/// スクリプト単体でUDP送信を実行（UDPSender参照不要）
 /// </summary>
-public class UDPSender : MonoBehaviour
+public class KR_VibrationFeedback : MonoBehaviour
 {
     [Header("Network Settings")]
     [Tooltip("Microcontroller IP address")]
@@ -27,7 +26,7 @@ public class UDPSender : MonoBehaviour
     public float maxDistance = 0.5f;
 
     [Tooltip("Vibration update interval during freeze (seconds)")]
-    public float updateInterval = 0.05f;
+    public float updateInterval = 0.02f; // 50Hz = 20ms間隔
 
     [Header("References")]
     [Tooltip("MarkerTask reference (auto-found if null)")]
@@ -35,7 +34,10 @@ public class UDPSender : MonoBehaviour
 
     [Header("Debug")]
     [Tooltip("Log sent data to console")]
-    public bool logSentData = false;
+    public bool logSentData = true;
+
+    [Tooltip("Log detailed debug information")]
+    public bool debugMode = true;
 
     // UDP communication
     private UdpClient udpClient;
@@ -56,7 +58,7 @@ public class UDPSender : MonoBehaviour
 
     /// <summary>
     /// toMbed構造体 - マイコンに送信するデータ構造
-    /// HapticUDPSender.csと同じ構造（mbedのdataStruct.hと一致）
+    /// ContinuousVibrationFeedback.csと同じ構造（mbedのdataStruct.hと一致）
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 4, CharSet = CharSet.Ansi)]
     private struct ToMbed
@@ -88,6 +90,7 @@ public class UDPSender : MonoBehaviour
     {
         InitializeUDP();
         SendAllOff();
+
         // Find MarkerTask if not assigned
         if (markerTask == null)
         {
@@ -107,15 +110,11 @@ public class UDPSender : MonoBehaviour
 
     void Update()
     {
-        if (!enableKRFeedback) return;
-
-        // markerTaskがnullの場合は安全に終了（エラーを出さない）
-        if (markerTask == null) return;
+        if (!enableKRFeedback || markerTask == null) return;
 
         // Only check during task running
         if (!markerTask.IsTaskRunning())
         {
-            // タスクが動いていない場合、振動を停止
             if (feedbackCoroutine != null)
             {
                 StopCoroutine(feedbackCoroutine);
@@ -136,9 +135,7 @@ public class UDPSender : MonoBehaviour
             {
                 StopCoroutine(feedbackCoroutine);
             }
-
             feedbackCoroutine = StartCoroutine(ProvideKRFeedbackDuringFreeze());
-            Debug.Log($"KR FB Start (Trial {markerTask.GetTrialCount()})");
         }
         // Feedback終了: フラグがtrue→falseに変化
         else if (wasFeedbackActive && !shouldFeedback)
@@ -148,9 +145,7 @@ public class UDPSender : MonoBehaviour
                 StopCoroutine(feedbackCoroutine);
                 feedbackCoroutine = null;
             }
-
             SendAllOff();
-            Debug.Log($"KR FB Stop (Trial {markerTask.GetTrialCount()})");
         }
 
         wasFeedbackActive = shouldFeedback;
@@ -168,7 +163,7 @@ public class UDPSender : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.LogError($"KR FB UDP Init Error: {e.Message}");
+            Debug.LogError($"[KR FB] UDP Init Error: {e.Message}");
         }
     }
 
@@ -179,7 +174,7 @@ public class UDPSender : MonoBehaviour
     {
         if (markerTask == null || markerTask.ball == null)
         {
-            Debug.LogError("KR FB: MarkerTask or Ball is NULL");
+            Debug.LogError("[KR FB] MarkerTask or Ball is NULL");
             yield break;
         }
 
@@ -188,73 +183,78 @@ public class UDPSender : MonoBehaviour
 
         if (currentMarker == null)
         {
-            Debug.LogError($"KR FB: Marker is NULL (Trial {markerTask.GetTrialCount()})");
+            Debug.LogError($"[KR FB] Marker is NULL (Trial {markerTask.GetTrialCount()})");
             SendAllOff();
             yield break;
         }
 
-        float elapsedTime = 0f;
-        int updateCount = 0;
+        // ★ freeze期間の長さをローカルにコピー（UniTaskとの競合を避ける）
+        float freezeDuration = markerTask.freezeDuration;
 
-        // Continue feedback during entire freeze duration
-        while (elapsedTime < markerTask.freezeDuration)
+        // ★ freeze期間開始時（緑→赤に変わった瞬間）のボールの最終位置を取得
+        Vector3 finalBallPos = markerTask.ball.position;
+        Vector3 targetPos = currentMarker.transform.position;
+
+        // ボールからターゲットへの方向 = ボールを動かすべき方向
+        // 例: ターゲットが前（+Z）、ボールが後ろ → dz=正 → 北（2）を振動 = 「前に動かせ」
+        float dx = targetPos.x - finalBallPos.x;
+        float dz = targetPos.z - finalBallPos.z;
+        float distance = Mathf.Sqrt(dx * dx + dz * dz);
+
+        // Check if perfectly aligned
+        float perfectThreshold = 0.001f; // 1mm以内は完璧とみなす（FBなし）
+
+        int vibrator = 0;
+        int intensity = 0;
+
+        if (distance < perfectThreshold)
         {
-            updateCount++;
-
-            // Calculate distance and direction
-            Vector3 ballPos = markerTask.ball.position;
-            Vector3 targetPos = currentMarker.transform.position;
-
-            // ターゲットからボールへの方向（ボールを動かすべき方向の逆）
-            // → ボールからターゲットへの方向に変更（ボールを動かすべき方向）
-            float dx = targetPos.x - ballPos.x;
-            float dz = targetPos.z - ballPos.z;
-            float distance = Mathf.Sqrt(dx * dx + dz * dz);
-
-            // Check if perfectly aligned
-            float perfectThreshold = 0.001f; // 1mm以内は完璧とみなす（FBなし）
-
-            if (distance < perfectThreshold)
+            // Perfect alignment - no vibration
+            currentVibrator = 0;
+            currentIntensity = 0;
+        }
+        else
+        {
+            // Calculate intensity (2,4,6,8,10) based on distance
+            if (distance >= maxDistance)
             {
-                // Perfect alignment - no vibration
-                currentVibrator = 0;
-                currentIntensity = 0;
-                SendAllOff();
+                intensity = 10; // Maximum intensity for out-of-range
             }
             else
             {
-                // Any deviation from perfect - calculate intensity (2,4,6,8,10)
-                int intensity;
-                if (distance >= maxDistance)
-                {
-                    intensity = 10; // Maximum intensity for out-of-range
-                }
-                else
-                {
-                    // Map distance to intensity: 2,4,6,8,10
-                    // distance: 0.001~maxDistance → intensity: 2~10
-                    int level = Mathf.Clamp((int)Mathf.Ceil(distance / maxDistance * 5), 1, 5);
-                    intensity = level * 2;
-                }
-
-                // Calculate angle for direction
-                float angle = Mathf.Atan2(dz, dx) * Mathf.Rad2Deg;
-                if (angle < 0) angle += 360;
-
-                // Determine vibrator (1-9 grid)
-                int vibrator = GetVibratorFromAngle(angle);
-
-                // Store current state for logging
-                currentVibrator = vibrator;
-                currentIntensity = intensity;
-
-                // Send vibration command
-                SendVibrationCommand(vibrator, intensity, updateInterval);
+                // Map distance to intensity: 2,4,6,8,10
+                // distance: 0.001~maxDistance → intensity: 2~10
+                int level = Mathf.Clamp((int)Mathf.Ceil(distance / maxDistance * 5), 1, 5);
+                intensity = level * 2;
             }
 
-            yield return new WaitForSeconds(updateInterval);
-            elapsedTime += updateInterval;
+            // Calculate angle for direction
+            float angle = Mathf.Atan2(dz, dx) * Mathf.Rad2Deg;
+            if (angle < 0) angle += 360;
+
+            // Determine vibrator (1-9 grid)
+            vibrator = GetVibratorFromAngle(angle);
+
+            // Store current state for logging
+            currentVibrator = vibrator;
+            currentIntensity = intensity;
         }
+
+        // 必要最小限のログ: 振動場所、強度、距離
+        Debug.Log($"[KR FB] Vibrator={vibrator}, Intensity={intensity}, FinalDistance={distance:F4}m");
+
+        // 1秒固定のパケットを1回送信
+        if (vibrator > 0 && intensity > 0)
+        {
+            SendVibrationCommand(vibrator, intensity, freezeDuration); // 1.0秒
+        }
+        else
+        {
+            SendAllOff();
+        }
+
+        // freeze期間待機
+        yield return new WaitForSeconds(freezeDuration);
 
         // Freeze duration ended - stop vibration
         currentVibrator = 0;
@@ -263,20 +263,27 @@ public class UDPSender : MonoBehaviour
     }
 
     /// <summary>
-    /// Map angle to vibrator number (1-9 grid)
-    /// 8-direction mapping: 6(0°/East), 3(45°/NE), 2(90°/North), 1(135°/NW),
-    ///                      4(180°/West), 7(225°/SW), 8(270°/South), 9(315°/SE)
+    /// Map angle to vibrator number (3x3 grid, center=5 is NOT used)
+    /// 振動子配置:
+    ///   1(NW)  2(N)   3(NE)
+    ///   4(W)   5(中心：未使用)  6(E)
+    ///   7(SW)  8(S)   9(SE)
+    ///
+    /// 8-direction mapping (5は使用しない):
+    ///   6(0°/East), 3(45°/NE), 2(90°/North), 1(135°/NW),
+    ///   4(180°/West), 7(225°/SW), 8(270°/South), 9(315°/SE)
     /// </summary>
     int GetVibratorFromAngle(float angle)
     {
-        if (angle >= 337.5f || angle < 22.5f) return 6;      // East
-        else if (angle >= 22.5f && angle < 67.5f) return 3;  // NE
-        else if (angle >= 67.5f && angle < 112.5f) return 2; // North
-        else if (angle >= 112.5f && angle < 157.5f) return 1; // NW
-        else if (angle >= 157.5f && angle < 202.5f) return 4; // West
-        else if (angle >= 202.5f && angle < 247.5f) return 7; // SW
-        else if (angle >= 247.5f && angle < 292.5f) return 8; // South
-        else return 9; // SE
+        // 振動子1-4, 6-9の8方向のみ使用（5は中心なので使わない）
+        if (angle >= 337.5f || angle < 22.5f) return 6;      // 0° East
+        else if (angle >= 22.5f && angle < 67.5f) return 3;  // 45° NE
+        else if (angle >= 67.5f && angle < 112.5f) return 2; // 90° North
+        else if (angle >= 112.5f && angle < 157.5f) return 1; // 135° NW
+        else if (angle >= 157.5f && angle < 202.5f) return 4; // 180° West
+        else if (angle >= 202.5f && angle < 247.5f) return 7; // 225° SW
+        else if (angle >= 247.5f && angle < 292.5f) return 8; // 270° South
+        else return 9; // 315° SE
     }
 
     /// <summary>
@@ -287,9 +294,21 @@ public class UDPSender : MonoBehaviour
     /// <param name="duration">Duration in seconds</param>
     public void SendVibrationCommand(int vibratorNumber, int intensity, float duration)
     {
-        if (udpClient == null || vibratorNumber < 1 || vibratorNumber > 9 ||
-            intensity < 0 || intensity > 10 || intensity % 2 != 0)
+        if (udpClient == null)
         {
+            Debug.LogError("[KR FB] UDP client is NULL - cannot send");
+            return;
+        }
+
+        if (vibratorNumber < 1 || vibratorNumber > 9)
+        {
+            Debug.LogWarning($"[KR FB] Invalid vibrator number: {vibratorNumber} (must be 1-9)");
+            return;
+        }
+
+        if (intensity < 0 || intensity > 10 || intensity % 2 != 0)
+        {
+            Debug.LogWarning($"[KR FB] Invalid intensity: {intensity} (must be 0,2,4,6,8,10)");
             return;
         }
 
@@ -323,13 +342,19 @@ public class UDPSender : MonoBehaviour
 
             // Convert structure to bytes and send
             byte[] bytes = StructToBytes(data);
-            udpClient.Send(bytes, bytes.Length, remoteEndPoint);
 
+            if (bytes.Length != 112)
+            {
+                Debug.LogError($"[KR FB] Invalid packet size: {bytes.Length} bytes (expected 112)");
+                return;
+            }
+
+            udpClient.Send(bytes, bytes.Length, remoteEndPoint);
             sendCount++;
         }
         catch (Exception e)
         {
-            Debug.LogError($"KR FB Send Error: {e.Message}");
+            Debug.LogError($"[KR FB] Send Error: {e.Message}");
         }
     }
 
@@ -370,7 +395,7 @@ public class UDPSender : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.LogError($"KR FB All-Off Error: {e.Message}");
+            Debug.LogError($"[KR FB] All-Off Error: {e.Message}");
         }
     }
 
@@ -381,16 +406,24 @@ public class UDPSender : MonoBehaviour
     {
         int size = Marshal.SizeOf(data);
         byte[] bytes = new byte[size];
-        IntPtr ptr = Marshal.AllocHGlobal(size);
+        IntPtr ptr = IntPtr.Zero;
 
         try
         {
+            ptr = Marshal.AllocHGlobal(size);
             Marshal.StructureToPtr(data, ptr, true);
             Marshal.Copy(ptr, bytes, 0, size);
         }
+        catch (Exception e)
+        {
+            Debug.LogError($"[KR FB] StructToBytes Error: {e.Message}");
+        }
         finally
         {
-            Marshal.FreeHGlobal(ptr);
+            if (ptr != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(ptr);
+            }
         }
 
         return bytes;
@@ -400,9 +433,16 @@ public class UDPSender : MonoBehaviour
     {
         if (udpClient != null)
         {
-            udpClient.Close();
-            udpClient = null;
-
+            try
+            {
+                SendAllOff();
+                udpClient.Close();
+                udpClient = null;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[KR FB] OnDestroy Error: {e.Message}");
+            }
         }
     }
 }
