@@ -43,3 +43,10 @@
 ehthumbs.db
 Thumbs.db
 [Dd]esktop.ini
+
+# Claude Code
+.claude/
+
+# Data logs
+Data/
+datafolder/
