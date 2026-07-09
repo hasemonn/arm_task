@@ -9,6 +9,7 @@ namespace LSL4Unity.Samples.SimpleInlet
     /// EMG信号処理:RMS、閾値カット、正規化、平滑化
     /// キャリブレーションと測定モード付き
     /// </summary>
+    [DefaultExecutionOrder(-100)]
     public class EMGSignalProcessor : MonoBehaviour
     {
 
@@ -16,8 +17,8 @@ namespace LSL4Unity.Samples.SimpleInlet
         public ProcessingMode mode = ProcessingMode.Measurement;
 
         [Header("RMS Window Settings")]
-        [Tooltip("RMS計算用のサンプル数(例: 100サンプル = 0.1秒@1000Hz)")]
-        public int rmsWindowSize = 100;
+        [Tooltip("RMS計算用のサンプル数(例: 50サンプル = 0.05秒@1000Hz)")]
+        public int rmsWindowSize = 50;
 
         [Header("Calibration Values (Read Only)")]
         [Tooltip("Ch1-4の最大RMS値")]
@@ -55,6 +56,18 @@ namespace LSL4Unity.Samples.SimpleInlet
         private Queue<float>[] dataBuffers = new Queue<float>[4];
         private Queue<float>[] smoothBuffers = new Queue<float>[4];
 
+        // 直近フレームで処理した全サンプル（1000Hz記録用）
+        public struct EMGProcessedSample
+        {
+            public double timestamp;
+            public float raw1, raw2, raw3, raw4;
+            public float filtered1, filtered2, filtered3, filtered4;
+            public float normalized1, normalized2, normalized3, normalized4;
+        }
+
+        private List<EMGProcessedSample> frameSamples = new List<EMGProcessedSample>();
+        public IReadOnlyList<EMGProcessedSample> FrameSamples => frameSamples;
+
         public enum ProcessingMode
         {
             MaxCalibration,      // 最大値キャリブレーション
@@ -87,18 +100,35 @@ namespace LSL4Unity.Samples.SimpleInlet
 
         void Update()
         {
+            // 直近チャンクの全サンプルを1000Hzで処理する
+            frameSamples.Clear();
 
-            // 生データ取得(Ch1-4)
-            for (int ch = 1; ch <= 4; ch++)
+            int count = emgSource.LastChunkCount;
+            for (int s = 0; s < count; s++)
             {
-                rawValues[ch - 1] = emgSource.GetChannelValue(ch);
+                // 生データ取得(Ch1-4) - チャンク内サンプルsの値
+                for (int ch = 1; ch <= 4; ch++)
+                {
+                    rawValues[ch - 1] = emgSource.GetChunkChannelValue(s, ch);
+                }
+
+                // 各チャンネルを処理（RMSスライディング窓・閾値・正規化・平滑化がサンプル単位で進む）
+                for (int i = 0; i < 4; i++)
+                {
+                    ProcessChannel(i);
+                }
+
+                // このサンプルの処理結果を記録用に保持
+                frameSamples.Add(new EMGProcessedSample
+                {
+                    timestamp = emgSource.GetChunkTimestamp(s),
+                    raw1 = rawValues[0], raw2 = rawValues[1], raw3 = rawValues[2], raw4 = rawValues[3],
+                    filtered1 = thresholdedRMS[0], filtered2 = thresholdedRMS[1], filtered3 = thresholdedRMS[2], filtered4 = thresholdedRMS[3],
+                    normalized1 = smoothedValues[0], normalized2 = smoothedValues[1], normalized3 = smoothedValues[2], normalized4 = smoothedValues[3]
+                });
             }
 
-            // 各チャンネルを処理
-            for (int i = 0; i < 4; i++)
-            {
-                ProcessChannel(i);
-            }
+            // ループ後、公開配列は最後のサンプルの値を保持（制御・GUIは従来通り最新値を得る）
         }
 
         void ProcessChannel(int channelIndex)

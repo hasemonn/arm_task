@@ -33,6 +33,15 @@
 *.ipa
 *.unitypackage
 
+# Agent / tooling
+# ---
+.agents/
+.claude/
+
+# Data output
+# ---
+/Data/
+
 # OS specific
 # ---
 .DS_Store

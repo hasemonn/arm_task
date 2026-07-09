@@ -8,6 +8,7 @@ namespace LSL4Unity.Samples.SimpleInlet
     /// LSLからEMGデータを受信してConsoleとOnGUIで表示（3D環境対応）
     /// UI Textを使わないシンプル版
     /// </summary>
+    [DefaultExecutionOrder(-200)]
     public class EMGDebugDisplay : MonoBehaviour
     {
         [Header("LSL Stream Settings")]
@@ -34,6 +35,9 @@ namespace LSL4Unity.Samples.SimpleInlet
 
         // Latest Data
         private float[] latestValues = new float[8];  // 最大8チャンネル
+
+        // 直近フレームで pull_chunk が返したサンプル数（1000Hz全サンプル処理用）
+        public int LastChunkCount { get; private set; }
 
         void Start()
         {
@@ -122,12 +126,14 @@ namespace LSL4Unity.Samples.SimpleInlet
         {
             if (!isConnected || inlet == null)
             {
+                LastChunkCount = 0;
                 return;
             }
 
             try
             {
                 int samples_returned = inlet.pull_chunk(data_buffer, timestamp_buffer);
+                LastChunkCount = (samples_returned > 0) ? samples_returned : 0;
 
                 if (samples_returned > 0)// 受信できたかを判定
                 {
@@ -144,6 +150,7 @@ namespace LSL4Unity.Samples.SimpleInlet
             }
             catch (System.Exception e)
             {
+                LastChunkCount = 0;
                 errorMessage = $"Data reception error: {e.Message}";
                 Debug.LogError($"[LSL] Error receiving data: {e.Message}");
                 isConnected = false;
@@ -221,6 +228,23 @@ namespace LSL4Unity.Samples.SimpleInlet
         public float[] GetAllChannelValues()
         {
             return (float[])latestValues.Clone();
+        }
+
+        // 直近チャンク内の1サンプルの値を取得（channel: GetChannelValueと同じ1始まり規約、Ch1-4）
+        public float GetChunkChannelValue(int sampleIndex, int channel)
+        {
+            if (data_buffer == null) return 0f;
+            if (sampleIndex < 0 || sampleIndex >= LastChunkCount) return 0f;
+            if (channel < 1 || channel > 4 || channel >= channelCount) return 0f;
+            return data_buffer[sampleIndex, channel];
+        }
+
+        // 直近チャンク内の1サンプルのLSLタイムスタンプを取得
+        public double GetChunkTimestamp(int sampleIndex)
+        {
+            if (timestamp_buffer == null) return 0.0;
+            if (sampleIndex < 0 || sampleIndex >= LastChunkCount) return 0.0;
+            return timestamp_buffer[sampleIndex];
         }
 
         public bool IsConnected()

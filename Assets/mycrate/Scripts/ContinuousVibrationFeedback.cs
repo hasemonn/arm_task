@@ -41,6 +41,17 @@ public class ContinuousVibrationFeedback : MonoBehaviour
     [Tooltip("オフセットからの変動範囲（±50°で振動子6-3または6-9の間）")]
     public float shoulderPitchRange = 50f;
 
+    [Header("Vibration Mode Select")]
+    [Tooltip("KP or Ramdom FB")]
+    public VibrationModeSelect vibrationModeSelect = VibrationModeSelect.KP;
+
+
+        public enum VibrationModeSelect
+        {
+        KP,
+        Random
+        }
+
     [Header("Vibration Intensity")]
     [Range(0, 255)]
     [Tooltip("最大振動強度 (0-255)")]
@@ -80,9 +91,12 @@ public class ContinuousVibrationFeedback : MonoBehaviour
     private int sendCount = 0;
 
     // 肘角度による基本振動子マッピング（30°刻み）
-    private readonly int[] elbowAngleThresholds = { 0, 30, 60, 90, 120, 150, 160 };
-    private readonly int[] elbowBaseVibrators = { 3, 2, 1, 4, 7, 8, 8 }; // 1-indexed (後で-1する)
-    //private readonly int[] elbowBaseVibrators = { 1, 2, 3, 6, 9, 8, 8 }; // 1-indexed (後で-1する)
+    private readonly int[] elbowAngleThresholds = { 0, 30, 60, 90, 120, 150, 180 };
+    private readonly int[] elbowBaseVibrators = { 3, 2, 1, 4, 7, 8, 9 }; // 1-indexed (後で-1する)
+    //private readonly int[] elbowBaseVibrators = { 1, 2, 3, 6, 9, 8, 6 }; // 1-indexed (後で-1する)
+    public int [] elbowBaseVibration=new int [7];
+
+
     // デバッグ用
     private float currentShoulderPitch;
     private float currentElbowAngle;
@@ -339,67 +353,86 @@ public class ContinuousVibrationFeedback : MonoBehaviour
     /// </summary>
     private void CalculateVibrationPattern(float shoulderPitch, float elbowAngle)
     {
-        // 配列を初期化
-        Array.Clear(vibrationIntensities, 0, vibrationIntensities.Length);
-
-        // === ステップ1: 縦方向オフセット計算 ===
-        // shoulderPitch = shoulderPitchOffset (25°) → offset = 0 (振動子6が中心)
-        // shoulderPitch = shoulderPitchOffset - 50° (-25°) → offset = -1 (下にシフト)
-        // shoulderPitch = shoulderPitchOffset + 50° (75°) → offset = +1 (上にシフト)
-        float verticalOffset = (shoulderPitch - shoulderPitchOffset) / shoulderPitchRange;
-        verticalOffset = Mathf.Clamp(verticalOffset, -1f, 1f);
-
-        // === ステップ2: 肘角度による基本振動子選択 ===
-        int lowerIndex = 0;
-        for (int i = 0; i < elbowAngleThresholds.Length - 1; i++)
+        switch (vibrationModeSelect)
         {
-            if (elbowAngle >= elbowAngleThresholds[i] && elbowAngle < elbowAngleThresholds[i + 1])
-            {
-                lowerIndex = i;
+            case VibrationModeSelect.KP:
+                // 配列を初期化
+                Array.Clear(vibrationIntensities, 0, vibrationIntensities.Length);
+
+                // === ステップ1: 縦方向オフセット計算 ===
+                // shoulderPitch = shoulderPitchOffset (25°) → offset = 0 (振動子6が中心)
+                // shoulderPitch = shoulderPitchOffset - 50° (-25°) → offset = -1 (下にシフト)
+                // shoulderPitch = shoulderPitchOffset + 50° (75°) → offset = +1 (上にシフト)
+                float verticalOffset = (shoulderPitch - shoulderPitchOffset) / shoulderPitchRange;
+                verticalOffset = Mathf.Clamp(verticalOffset, -1f, 1f);
+
+                // === ステップ2: 肘角度による基本振動子選択 ===
+                int lowerIndex = 0;
+                for (int i = 0; i < elbowAngleThresholds.Length - 1; i++)
+                {
+                    if (elbowAngle >= elbowAngleThresholds[i] && elbowAngle < elbowAngleThresholds[i + 1])
+                    {
+                        lowerIndex = i;
+                        break;
+                    }
+                    else if (elbowAngle >= elbowAngleThresholds[elbowAngleThresholds.Length - 1])
+                    {
+                        lowerIndex = elbowAngleThresholds.Length - 2;
+                        break;
+                    }
+                }
+
+                int upperIndex = Mathf.Min(lowerIndex + 1, elbowAngleThresholds.Length - 1);
+
+                // 補間重み
+                float angleLower = elbowAngleThresholds[lowerIndex];
+                float angleUpper = elbowAngleThresholds[upperIndex];
+                float range = angleUpper - angleLower;
+                float weight = range > 0 ? (elbowAngle - angleLower) / range : 0f;
+
+                // === ステップ3: 縦シフトを適用した振動子選択 ===
+                int baseMainVibrator = elbowBaseVibrators[lowerIndex];
+                int baseNextVibrator = elbowBaseVibrators[upperIndex];
+
+                int mainVibrator = GetShiftedVibrator(baseMainVibrator, verticalOffset);
+                int nextVibrator = GetShiftedVibrator(baseNextVibrator, verticalOffset);
+
+                // === ステップ4: メイン振動子の強度設定 ===
+                vibrationIntensities[mainVibrator - 1] = (byte)((1f - weight) * maxIntensity);
+
+                if (mainVibrator != nextVibrator)
+                {
+                    vibrationIntensities[nextVibrator - 1] = (byte)(weight * maxIntensity);
+                }
+
+                // === ステップ5: 振動子5の重なり計算 ===
+                // 90°で最大、そこから離れるほど減少
+                float angleFrom90 = Mathf.Abs(elbowAngle - 90f);
+                float overlapFactor = Mathf.Clamp01(1f - angleFrom90 / 90f);
+
+                // 振動子5もverticalOffsetの影響を受ける
+                int centerVibrator = GetShiftedVibrator(5, verticalOffset);
+
+                // 中央振動子の強度を加算
+                int centerIntensity = (int)(overlapFactor * maxIntensity * centerVibratorRatio);
+                vibrationIntensities[centerVibrator - 1] = (byte)Mathf.Min(255,
+                    vibrationIntensities[centerVibrator - 1] + centerIntensity);
+
+                vibrationIntensities[5]= (byte)(maxIntensity * 4 / 5);
+                vibrationIntensities[8]=0;
                 break;
-            }
-            else if (elbowAngle >= elbowAngleThresholds[elbowAngleThresholds.Length - 1])
-            {
-                lowerIndex = elbowAngleThresholds.Length - 2;
+            case VibrationModeSelect.Random:
+                for(int i = 0; i < vibrationIntensities.Length; i++)
+                    vibrationIntensities[i] = (byte)UnityEngine.Random.Range(1, 10);
                 break;
-            }
+            default:
+                print("Error: Invalid VibrationModeSelect value");
+                break;
         }
 
-        int upperIndex = Mathf.Min(lowerIndex + 1, elbowAngleThresholds.Length - 1);
 
-        // 補間重み
-        float angleLower = elbowAngleThresholds[lowerIndex];
-        float angleUpper = elbowAngleThresholds[upperIndex];
-        float range = angleUpper - angleLower;
-        float weight = range > 0 ? (elbowAngle - angleLower) / range : 0f;
 
-        // === ステップ3: 縦シフトを適用した振動子選択 ===
-        int baseMainVibrator = elbowBaseVibrators[lowerIndex];
-        int baseNextVibrator = elbowBaseVibrators[upperIndex];
-
-        int mainVibrator = GetShiftedVibrator(baseMainVibrator, verticalOffset);
-        int nextVibrator = GetShiftedVibrator(baseNextVibrator, verticalOffset);
-
-        // === ステップ4: メイン振動子の強度設定 ===
-        vibrationIntensities[mainVibrator - 1] = (byte)((1f - weight) * maxIntensity);
-
-        if (mainVibrator != nextVibrator)
-        {
-            vibrationIntensities[nextVibrator - 1] = (byte)(weight * maxIntensity);
-        }
-
-        // === ステップ5: 振動子5の重なり計算 ===
-        // 90°で最大、そこから離れるほど減少
-        float angleFrom90 = Mathf.Abs(elbowAngle - 90f);
-        float overlapFactor = Mathf.Clamp01(1f - angleFrom90 / 90f);
-
-        // 振動子5もverticalOffsetの影響を受ける
-        int centerVibrator = GetShiftedVibrator(5, verticalOffset);
-
-        // 中央振動子の強度を加算
-        int centerIntensity = (int)(overlapFactor * maxIntensity * centerVibratorRatio);
-        vibrationIntensities[centerVibrator - 1] = (byte)Mathf.Min(255,
-            vibrationIntensities[centerVibrator - 1] + centerIntensity);
+       
     }
 
     /// <summary>

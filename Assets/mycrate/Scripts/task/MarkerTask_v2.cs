@@ -6,11 +6,15 @@ using System.Text;
 using System;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using LSL4Unity.Samples.SimpleInlet;
 
 public class MarkerTask : MonoBehaviour
 {
     [Header("Controller Reference")]
     public IndependentEMGJointController jointController; // Independent EMG Joint Controller
+
+    [Header("EMG Reference")]
+    public EMGSignalProcessor emgProcessor; // EMGcont（生値・フィルタ後・正規化後の最終出力を記録）
 
     [Header("Arm References")]
     public Transform shoulderJoint; // 肩関節
@@ -45,9 +49,9 @@ public class MarkerTask : MonoBehaviour
 
     [Header("Task Settings")]
     public int totalTrials = 10;
-    public float initialFreezeDuration = 1.0f; // 初期位置固定時間
-    public float movementDuration = 3.0f;
-    public float freezeDuration = 1.0f; // ターゲット位置固定時間
+    public float initialFreezeDuration = 10.0f; // 初期位置固定時間
+    public float movementDuration = 10.0f;
+    public float freezeDuration = 10.0f; // ターゲット位置固定時間
     public float markerSize = 0.05f;
     
     [Header("Data Logging")]
@@ -58,8 +62,14 @@ public class MarkerTask : MonoBehaviour
     public enum SaveDestination
     {
         FB無し,
-        KP,
-        KR
+        FBあり
+    }
+
+    public enum TrialPhase
+    {
+        InitialFreeze, // 初期位置固定
+        Movement,      // 動作中（緑色）
+        Hold           // ターゲット位置保持（赤色）
     }
     
     // 現在のターゲット情報 - 2DOF
@@ -76,6 +86,7 @@ public class MarkerTask : MonoBehaviour
     private int trialCount = 0;
     private bool taskRunning = false;
     private bool isInMovementPhase = false; // 緑色の期間（動作中）かどうか
+    private TrialPhase currentPhase = TrialPhase.InitialFreeze;
     private List<int> trialOrder;
 
     // KR Feedback用フラグ（KR_VibrationFeedbackがなくてもエラーにならない）
@@ -98,8 +109,12 @@ public class MarkerTask : MonoBehaviour
     private float actualPathLength = 0f;
     private Vector3 trialStartPosition;
     private float trialStartTime;
-    private float movementPhaseStartTime; // 緑色期間の開始時刻
     private float lastLogTime = 0f;
+    private List<EMGData> emgBuffer = new List<EMGData>();
+    private bool emgRecording = false;
+    // EMG記録のタイムゼロ（最初のサンプルのLSLタイムスタンプ）
+    private double emgFirstLslTimestamp = 0.0;
+    private bool emgFirstStamped = false;
 
     // 微分計算の最小時間間隔（数値的破綻を防ぐ）
     private const float MIN_DELTA_TIME = 0.0001f;
@@ -131,6 +146,7 @@ public class MarkerTask : MonoBehaviour
     {
         public float timestamp;
         public int trialNumber;
+        public string phase; // どのフェーズ（InitialFreeze/Movement/Hold）か
 
         // ターゲット情報(FK計算済み) - 2DOF
         public float targetShoulderPitch;
@@ -160,11 +176,30 @@ public class MarkerTask : MonoBehaviour
         // KR Feedback情報（Summary集計用、Detailedには含めない）
         public int fbVibrator; // 振動子番号 (0=なし, 1-9)
         public int fbIntensity; // 振動強度 (0,2,4,6,8,10)
+
+        // EMG情報(Ch1-4) - 生値・フィルタ後(閾値カット後RMS)・正規化後の最終出力(平滑化後)
+        public float emgRawCh1, emgRawCh2, emgRawCh3, emgRawCh4;
+        public float emgFilteredCh1, emgFilteredCh2, emgFilteredCh3, emgFilteredCh4;
+        public float emgNormalizedCh1, emgNormalizedCh2, emgNormalizedCh3, emgNormalizedCh4;
+    }
+
+    [System.Serializable]
+    public struct EMGData
+    {
+        public float timestamp;
+        public int trialNumber;
+        public string phase;
+        public float rawCh1, rawCh2, rawCh3, rawCh4;
+        public float filteredCh1, filteredCh2, filteredCh3, filteredCh4;
+        public float normalizedCh1, normalizedCh2, normalizedCh3, normalizedCh4;
     }
     
     // KR Feedback参照（存在する場合のみ）
     private UDPSender krFeedback;
     private bool shouldLogKRFeedback = false;
+
+    // EMG参照（存在する場合のみ）
+    private bool shouldLogEMG = false;
 
     void Start()
     {
@@ -188,12 +223,28 @@ public class MarkerTask : MonoBehaviour
         // KR Feedbackの有無をチェック
         krFeedback = FindObjectOfType<UDPSender>();
 
-        // KRがアタッチされている、またはKRフォルダに保存する場合にFB強度を記録
-        shouldLogKRFeedback = (krFeedback != null) || (saveDestination == SaveDestination.KR);
+        // KRがアタッチされている、またはFBありフォルダに保存する場合にFB強度を記録
+        shouldLogKRFeedback = (krFeedback != null) || (saveDestination == SaveDestination.FBあり);
 
         if (shouldLogKRFeedback)
         {
             Debug.Log("MarkerTask: KR Feedback logging enabled");
+        }
+
+        // EMGSignalProcessor(EMGcont)の有無をチェック
+        if (emgProcessor == null)
+        {
+            emgProcessor = FindObjectOfType<EMGSignalProcessor>();
+        }
+        shouldLogEMG = emgProcessor != null;
+
+        if (shouldLogEMG)
+        {
+            Debug.Log("MarkerTask: EMG logging enabled");
+        }
+        else
+        {
+            Debug.LogWarning("MarkerTask: EMGSignalProcessor not found. EMG columns will be logged as 0.");
         }
 
         // バックグラウンドでも実行を継続（勝手にPauseにならない）
@@ -202,10 +253,30 @@ public class MarkerTask : MonoBehaviour
 
     void Update()
     {
+        // このフレームで処理された全EMGサンプルを1000Hzで記録
+        if (enableLogging && emgRecording && emgProcessor != null)
+        {
+            var samples = emgProcessor.FrameSamples;
+            for (int i = 0; i < samples.Count; i++)
+            {
+                var s = samples[i];
+                if (!emgFirstStamped) { emgFirstLslTimestamp = s.timestamp; emgFirstStamped = true; }
+                emgBuffer.Add(new EMGData
+                {
+                    timestamp = (float)(s.timestamp - emgFirstLslTimestamp), // 記録開始からの相対秒(1000Hz)
+                    trialNumber = trialCount,
+                    phase = currentPhase.ToString(),
+                    rawCh1 = s.raw1, rawCh2 = s.raw2, rawCh3 = s.raw3, rawCh4 = s.raw4,
+                    filteredCh1 = s.filtered1, filteredCh2 = s.filtered2, filteredCh3 = s.filtered3, filteredCh4 = s.filtered4,
+                    normalizedCh1 = s.normalized1, normalizedCh2 = s.normalized2, normalizedCh3 = s.normalized3, normalizedCh4 = s.normalized4
+                });
+            }
+        }
+
         if (!taskRunning) return;
 
-        // 緑色の期間（動作中）のみデータをログ
-        if (enableLogging && ball != null && isInMovementPhase)
+        // トライアル全体（初期固定+動作+保持）でデータをログ（EMGを全フェーズで記録するため）
+        if (enableLogging && ball != null && taskRunning)
         {
             // 1000Hz (1ms間隔) でデータをサンプリング
             float currentTime = Time.time;
@@ -220,7 +291,7 @@ public class MarkerTask : MonoBehaviour
     [ContextMenu("Start Task")]
     public void StartTask()
     {
-        if (taskRunning) return;
+        if (taskRunning || emgRecording) return;
 
         // パターンをランダムに提示
         trialOrder = new List<int>();
@@ -245,6 +316,9 @@ public class MarkerTask : MonoBehaviour
 
         trialCount = 0;
         trialSummaries.Clear();
+        emgRecording = true;
+        emgBuffer.Clear();
+        emgFirstStamped = false;
 
         taskCancellationTokenSource?.Cancel();
         taskCancellationTokenSource?.Dispose();
@@ -266,9 +340,11 @@ public class MarkerTask : MonoBehaviour
 
             taskRunning = false;
             statusMessage = "Task Complete!";
+            emgRecording = false;
 
             if (enableLogging)
             {
+                SaveEMGContinuousCSV();
                 SaveAllData();
             }
         }
@@ -330,6 +406,7 @@ public class MarkerTask : MonoBehaviour
 
         // タスク開始フラグを立てる（KR FBが動作するように）
         taskRunning = true;
+        currentPhase = TrialPhase.InitialFreeze;
 
         // 初期位置で固定（黄色マーカー）
         if (jointController != null)
@@ -348,7 +425,7 @@ public class MarkerTask : MonoBehaviour
         // マーカーを緑に変更（動作時）& データロギング開始
         ChangeMarkerColor(Color.green);
         isInMovementPhase = true; // 緑色期間開始
-        movementPhaseStartTime = Time.time; // 緑色期間の開始時刻
+        currentPhase = TrialPhase.Movement;
         lastLogTime = Time.time; // サンプリングタイマーリセット
         lastPosition = ball != null ? ball.position : Vector3.zero; // 初期位置リセット
         actualPathLength = 0f; // パス長リセット
@@ -360,6 +437,7 @@ public class MarkerTask : MonoBehaviour
         // マーカーを赤に変更（ターゲット位置固定時）& データロギング停止
         ChangeMarkerColor(Color.red);
         isInMovementPhase = false; // 緑色期間終了
+        currentPhase = TrialPhase.Hold;
         float movementEndTime = Time.time; // 緑色期間終了時刻
 
         if (jointController != null)
@@ -596,19 +674,26 @@ public class MarkerTask : MonoBehaviour
         float totalFBIntensity = 0f;
         int fbSampleCount = 0;
         int finalFBVibrator = 0;
+        int movementSampleCount = 0;
+        string movementPhaseName = TrialPhase.Movement.ToString();
 
         foreach (var data in dataBuffer)
         {
-            totalPositionError += data.positionError;
-            totalJointSpaceError += data.jointSpaceError;
+            // 動作解析の指標（位置誤差・ジャーク等）は動作中フェーズのデータのみ対象（固定フェーズは含めない）
+            if (data.phase == movementPhaseName)
+            {
+                movementSampleCount++;
+                totalPositionError += data.positionError;
+                totalJointSpaceError += data.jointSpaceError;
 
-            float maxJerkThisFrame = Mathf.Max(
-                Mathf.Abs(data.shoulderPitchJerk),
-                Mathf.Abs(data.elbowJerk)
-            );
-            peakJerk = Mathf.Max(peakJerk, maxJerkThisFrame);
+                float maxJerkThisFrame = Mathf.Max(
+                    Mathf.Abs(data.shoulderPitchJerk),
+                    Mathf.Abs(data.elbowJerk)
+                );
+                peakJerk = Mathf.Max(peakJerk, maxJerkThisFrame);
+            }
 
-            // KR条件時のFB強度を集計（振動があるデータのみ）
+            // KR条件時のFB強度を集計（振動があるデータのみ。FBは保持フェーズ中に発生するため全フェーズ対象）
             if (shouldLogKRFeedback && data.fbVibrator > 0)
             {
                 totalFBIntensity += data.fbIntensity;
@@ -618,8 +703,8 @@ public class MarkerTask : MonoBehaviour
             }
         }
 
-        float avgPositionError = totalPositionError / dataBuffer.Count;
-        float avgJointSpaceError = totalJointSpaceError / dataBuffer.Count;
+        float avgPositionError = movementSampleCount > 0 ? totalPositionError / movementSampleCount : 0f;
+        float avgJointSpaceError = movementSampleCount > 0 ? totalJointSpaceError / movementSampleCount : 0f;
         float avgFBIntensity = fbSampleCount > 0 ? totalFBIntensity / fbSampleCount : 0f;
 
         // 最適経路長(直線距離)
@@ -667,8 +752,8 @@ public class MarkerTask : MonoBehaviour
 
         StringBuilder csv = new StringBuilder();
 
-        // DetailedにはFB情報を含めない（Summaryのみ）
-        csv.AppendLine("Timestamp," +
+        // DetailedにはFB情報を含めない（Summaryのみ）。Phase/EMGは全フェーズ分を含む
+        csv.AppendLine("Timestamp,Phase," +
                       "TargetShoulderPitch,TargetElbowAngle," +
                       "TargetPosX,TargetPosY,TargetPosZ," +
                       "ActualPosX,ActualPosY,ActualPosZ," +
@@ -676,11 +761,14 @@ public class MarkerTask : MonoBehaviour
                       "PositionError,JointSpaceError," +
                       "ShoulderPitchVel,ElbowVel," +
                       "ShoulderPitchJerk,ElbowJerk," +
-                      "PathLength,OptimalPathLength,PathEfficiency");
+                      "PathLength,OptimalPathLength,PathEfficiency," +
+                      "EMGRawCh1,EMGRawCh2,EMGRawCh3,EMGRawCh4," +
+                      "EMGFilteredCh1,EMGFilteredCh2,EMGFilteredCh3,EMGFilteredCh4," +
+                      "EMGNormalizedCh1,EMGNormalizedCh2,EMGNormalizedCh3,EMGNormalizedCh4");
 
         foreach (var data in dataBuffer)
         {
-            csv.AppendLine($"{data.timestamp}," +
+            csv.AppendLine($"{data.timestamp},{data.phase}," +
                           $"{data.targetShoulderPitch},{data.targetElbowAngle}," +
                           $"{data.targetPosition.x},{data.targetPosition.y},{data.targetPosition.z}," +
                           $"{data.actualPosition.x},{data.actualPosition.y},{data.actualPosition.z}," +
@@ -688,7 +776,10 @@ public class MarkerTask : MonoBehaviour
                           $"{data.positionError},{data.jointSpaceError}," +
                           $"{data.shoulderPitchVelocity},{data.elbowVelocity}," +
                           $"{data.shoulderPitchJerk},{data.elbowJerk}," +
-                          $"{data.pathLength},{data.optimalPathLength},{data.pathEfficiency}");
+                          $"{data.pathLength},{data.optimalPathLength},{data.pathEfficiency}," +
+                          $"{data.emgRawCh1},{data.emgRawCh2},{data.emgRawCh3},{data.emgRawCh4}," +
+                          $"{data.emgFilteredCh1},{data.emgFilteredCh2},{data.emgFilteredCh3},{data.emgFilteredCh4}," +
+                          $"{data.emgNormalizedCh1},{data.emgNormalizedCh2},{data.emgNormalizedCh3},{data.emgNormalizedCh4}");
         }
 
         File.WriteAllText(filepath, csv.ToString());
@@ -702,8 +793,8 @@ public class MarkerTask : MonoBehaviour
     {
         Vector3 currentPosition = ball.position;
 
-        // 移動距離を累積
-        if (lastPosition != Vector3.zero)
+        // 移動距離を累積（動作中フェーズのみ。固定フェーズ中の数値誤差を含めない）
+        if (lastPosition != Vector3.zero && currentPhase == TrialPhase.Movement)
         {
             actualPathLength += Vector3.Distance(currentPosition, lastPosition);
         }
@@ -724,8 +815,8 @@ public class MarkerTask : MonoBehaviour
         float optimalPathLength = Vector3.Distance(trialStartPosition, currentTargetPosition);
         float pathEfficiency = optimalPathLength > 0 ? optimalPathLength / Mathf.Max(actualPathLength, 0.001f) : 0f;
 
-        // 緑色期間の開始からの経過時間（0～約3秒）
-        float trialElapsedTime = Time.time - movementPhaseStartTime;
+        // トライアル開始（初期固定開始）からの経過時間
+        float trialElapsedTime = Time.time - trialStartTime;
 
         // KR Feedback情報を取得（KR FBフラグが立っている期間のみ）
         int fbVibrator = 0;
@@ -736,11 +827,26 @@ public class MarkerTask : MonoBehaviour
             fbIntensity = krFeedback.CurrentIntensity;
         }
 
+        // EMG情報を取得（EMGSignalProcessorが見つかっている場合のみ）
+        float[] emgRaw = new float[4];
+        float[] emgFiltered = new float[4];
+        float[] emgNormalized = new float[4];
+        if (shouldLogEMG)
+        {
+            for (int ch = 0; ch < 4; ch++)
+            {
+                emgRaw[ch] = emgProcessor.rawValues[ch];
+                emgFiltered[ch] = emgProcessor.thresholdedRMS[ch];
+                emgNormalized[ch] = emgProcessor.smoothedValues[ch];
+            }
+        }
+
         // データ構造体を作成
         MotionData data = new MotionData
         {
             timestamp = trialElapsedTime, // 試行開始からの相対時間
             trialNumber = trialCount,
+            phase = currentPhase.ToString(),
 
             targetShoulderPitch = targetShoulderPitch,
             targetElbowAngle = targetElbowAngle,
@@ -763,7 +869,20 @@ public class MarkerTask : MonoBehaviour
             pathEfficiency = pathEfficiency,
 
             fbVibrator = fbVibrator,
-            fbIntensity = fbIntensity
+            fbIntensity = fbIntensity,
+
+            emgRawCh1 = emgRaw[0],
+            emgRawCh2 = emgRaw[1],
+            emgRawCh3 = emgRaw[2],
+            emgRawCh4 = emgRaw[3],
+            emgFilteredCh1 = emgFiltered[0],
+            emgFilteredCh2 = emgFiltered[1],
+            emgFilteredCh3 = emgFiltered[2],
+            emgFilteredCh4 = emgFiltered[3],
+            emgNormalizedCh1 = emgNormalized[0],
+            emgNormalizedCh2 = emgNormalized[1],
+            emgNormalizedCh3 = emgNormalized[2],
+            emgNormalizedCh4 = emgNormalized[3]
         };
 
         dataBuffer.Add(data);
@@ -771,7 +890,7 @@ public class MarkerTask : MonoBehaviour
         lastPosition = currentPosition;
         lastJointAngles = currentJointAngles;
     }
-    
+
     /// <summary>
     /// 現在の関節角度を取得 (2DOF版)
     /// </summary>
@@ -886,6 +1005,35 @@ public class MarkerTask : MonoBehaviour
         File.WriteAllText(filepath, csv.ToString());
     }
 
+    void SaveEMGContinuousCSV()
+    {
+        if (emgBuffer.Count == 0) return;
+
+        string folderPath = GetEMGDataFolderPath();
+
+        if (!Directory.Exists(folderPath))
+        {
+            Directory.CreateDirectory(folderPath);
+        }
+
+        string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        string filename = $"EMG_{timestamp}.csv";
+        string filepath = Path.Combine(folderPath, filename);
+
+        StringBuilder csv = new StringBuilder();
+        csv.AppendLine("Timestamp,TrialNumber,Phase,EMGRawCh1,EMGRawCh2,EMGRawCh3,EMGRawCh4,EMGFilteredCh1,EMGFilteredCh2,EMGFilteredCh3,EMGFilteredCh4,EMGNormalizedCh1,EMGNormalizedCh2,EMGNormalizedCh3,EMGNormalizedCh4");
+
+        foreach (var data in emgBuffer)
+        {
+            csv.AppendLine($"{data.timestamp},{data.trialNumber},{data.phase}," +
+                          $"{data.rawCh1},{data.rawCh2},{data.rawCh3},{data.rawCh4}," +
+                          $"{data.filteredCh1},{data.filteredCh2},{data.filteredCh3},{data.filteredCh4}," +
+                          $"{data.normalizedCh1},{data.normalizedCh2},{data.normalizedCh3},{data.normalizedCh4}");
+        }
+
+        File.WriteAllText(filepath, csv.ToString());
+    }
+
     
     /// <summary>
     /// データフォルダのパスを取得
@@ -899,11 +1047,8 @@ public class MarkerTask : MonoBehaviour
             case SaveDestination.FB無し:
                 basePath = Path.Combine(Application.dataPath, @"..\datafolder\nonFB");
                 break;
-            case SaveDestination.KP:
-                basePath = Path.Combine(Application.dataPath, @"..\datafolder\KP");
-                break;
-            case SaveDestination.KR:
-                basePath = Path.Combine(Application.dataPath, @"..\datafolder\KR");
+            case SaveDestination.FBあり:
+                basePath = Path.Combine(Application.dataPath, @"..\datafolder\FB");
                 break;
             default:
                 basePath = Path.Combine(Application.dataPath, @"..\datafolder\nonFB");
@@ -918,6 +1063,18 @@ public class MarkerTask : MonoBehaviour
 
         return basePath;
     }
+
+    string GetEMGDataFolderPath()
+    {
+        switch (saveDestination)
+        {
+            case SaveDestination.FBあり:
+                return Path.Combine(Application.dataPath, @"..\datafolder\EMG-FB");
+            case SaveDestination.FB無し:
+            default:
+                return Path.Combine(Application.dataPath, @"..\datafolder\EMG-nonFB");
+        }
+    }
     
     public int GetTrialCount() => trialCount;
     public bool IsTaskRunning() => taskRunning;
@@ -925,10 +1082,11 @@ public class MarkerTask : MonoBehaviour
     [ContextMenu("Stop Task")]
     public void StopTask()
     {
-        if (taskRunning)
+        if (taskRunning || emgRecording)
         {
             taskCancellationTokenSource?.Cancel();
             taskRunning = false;
+            emgRecording = false;
 
             if (currentMarker != null)
             {
@@ -942,6 +1100,11 @@ public class MarkerTask : MonoBehaviour
             }
 
             statusMessage = "Task Stopped";
+
+            if (enableLogging)
+            {
+                SaveEMGContinuousCSV();
+            }
         }
     }
 
@@ -984,7 +1147,7 @@ public class MarkerTask : MonoBehaviour
 
         GUILayout.Space(10);
 
-        if (!taskRunning)
+        if (!taskRunning && !emgRecording)
         {
             if (GUILayout.Button("Start Task", GUILayout.Height(40)))
             {
