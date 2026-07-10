@@ -206,6 +206,12 @@ namespace LSL4Unity.Samples.SimpleInlet
                 inlet.close_stream();
                 inlet = null;
             }
+
+            if (resolver != null)
+            {
+                resolver.Dispose();
+                resolver = null;
+            }
         }
 
         // Public methods for external access (channel: 1-4)

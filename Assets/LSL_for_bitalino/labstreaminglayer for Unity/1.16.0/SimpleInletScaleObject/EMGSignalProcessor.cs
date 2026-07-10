@@ -47,6 +47,9 @@ namespace LSL4Unity.Samples.SimpleInlet
         [Tooltip("Ch1-4の平滑化後の値(0-100%)")]
         public float[] smoothedValues = new float[4];
 
+        [Header("Debug Display")]
+        public bool showDebugGUI = true;
+
         [Header("References")]
         public EMGDebugDisplay emgSource;
 
@@ -269,6 +272,8 @@ namespace LSL4Unity.Samples.SimpleInlet
 
         void OnGUI()
         {
+            if (!showDebugGUI) return;
+
             GUIStyle modeStyle = new GUIStyle(GUI.skin.label);
             modeStyle.fontSize = 20;
             modeStyle.fontStyle = FontStyle.Bold;

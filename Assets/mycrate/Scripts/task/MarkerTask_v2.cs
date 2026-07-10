@@ -47,6 +47,9 @@ public class MarkerTask : MonoBehaviour
     [Header("UI References")]
     public TextMeshProUGUI countdownText; // World Space Canvasのカウントダウンテキスト（VR対応）
 
+    [Header("Debug")]
+    public bool showDebugGUI = true;
+
     [Header("Task Settings")]
     public int totalTrials = 10;
     public float initialFreezeDuration = 10.0f; // 初期位置固定時間
@@ -1110,6 +1113,8 @@ public class MarkerTask : MonoBehaviour
 
     void OnGUI()
     {
+        if (!showDebugGUI) return;
+
         GUILayout.BeginArea(new Rect(10, 10, 400, 200));
 
         GUILayout.Label($"Status: {statusMessage}", GUI.skin.box);
