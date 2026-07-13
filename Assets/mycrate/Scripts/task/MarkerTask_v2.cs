@@ -83,6 +83,7 @@ public class MarkerTask : MonoBehaviour
 
     // マーカーオブジェクト
     private GameObject currentMarker;
+    private Shader markerShader;
     public GameObject CurrentMarker => currentMarker; // KR_VibrationFeedbackから参照できるように
 
     // タスク進行状態
@@ -149,7 +150,7 @@ public class MarkerTask : MonoBehaviour
     {
         public float timestamp;
         public int trialNumber;
-        public string phase; // どのフェーズ（InitialFreeze/Movement/Hold）か
+        public TrialPhase phase; // どのフェーズ（InitialFreeze/Movement/Hold）か
 
         // ターゲット情報(FK計算済み) - 2DOF
         public float targetShoulderPitch;
@@ -191,7 +192,7 @@ public class MarkerTask : MonoBehaviour
     {
         public float timestamp;
         public int trialNumber;
-        public string phase;
+        public TrialPhase phase;
         public float rawCh1, rawCh2, rawCh3, rawCh4;
         public float filteredCh1, filteredCh2, filteredCh3, filteredCh4;
         public float normalizedCh1, normalizedCh2, normalizedCh3, normalizedCh4;
@@ -206,6 +207,10 @@ public class MarkerTask : MonoBehaviour
 
     void Start()
     {
+        Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
+        Application.SetStackTraceLogType(LogType.Warning, StackTraceLogType.None);
+        markerShader = Shader.Find("Standard");
+
         lastJointAngles = new float[2];
 
         if (jointController == null)
@@ -268,7 +273,7 @@ public class MarkerTask : MonoBehaviour
                 {
                     timestamp = (float)(s.timestamp - emgFirstLslTimestamp), // 記録開始からの相対秒(1000Hz)
                     trialNumber = trialCount,
-                    phase = currentPhase.ToString(),
+                    phase = currentPhase,
                     rawCh1 = s.raw1, rawCh2 = s.raw2, rawCh3 = s.raw3, rawCh4 = s.raw4,
                     filteredCh1 = s.filtered1, filteredCh2 = s.filtered2, filteredCh3 = s.filtered3, filteredCh4 = s.filtered4,
                     normalizedCh1 = s.normalized1, normalizedCh2 = s.normalized2, normalizedCh3 = s.normalized3, normalizedCh4 = s.normalized4
@@ -321,6 +326,8 @@ public class MarkerTask : MonoBehaviour
         trialSummaries.Clear();
         emgRecording = true;
         emgBuffer.Clear();
+        int estimatedEmgSamples = Mathf.CeilToInt((initialFreezeDuration + movementDuration + freezeDuration + 1f) * totalTrials * 1000f) + 8000;
+        if (emgBuffer.Capacity < estimatedEmgSamples) emgBuffer.Capacity = estimatedEmgSamples;
         emgFirstStamped = false;
 
         taskCancellationTokenSource?.Cancel();
@@ -640,7 +647,7 @@ public class MarkerTask : MonoBehaviour
         Renderer markerRenderer = currentMarker.GetComponent<Renderer>();
         if (markerRenderer != null)
         {
-            markerRenderer.material = new Material(Shader.Find("Standard"));
+            markerRenderer.material = new Material(markerShader);
             markerRenderer.material.color = Color.yellow;
             markerRenderer.material.EnableKeyword("_EMISSION");
             markerRenderer.material.SetColor("_EmissionColor", Color.yellow * 0.5f);
@@ -678,12 +685,11 @@ public class MarkerTask : MonoBehaviour
         int fbSampleCount = 0;
         int finalFBVibrator = 0;
         int movementSampleCount = 0;
-        string movementPhaseName = TrialPhase.Movement.ToString();
 
         foreach (var data in dataBuffer)
         {
             // 動作解析の指標（位置誤差・ジャーク等）は動作中フェーズのデータのみ対象（固定フェーズは含めない）
-            if (data.phase == movementPhaseName)
+            if (data.phase == TrialPhase.Movement)
             {
                 movementSampleCount++;
                 totalPositionError += data.positionError;
@@ -849,7 +855,7 @@ public class MarkerTask : MonoBehaviour
         {
             timestamp = trialElapsedTime, // 試行開始からの相対時間
             trialNumber = trialCount,
-            phase = currentPhase.ToString(),
+            phase = currentPhase,
 
             targetShoulderPitch = targetShoulderPitch,
             targetElbowAngle = targetElbowAngle,
