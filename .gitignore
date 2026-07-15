@@ -32,6 +32,8 @@
 *.app
 *.ipa
 *.unitypackage
+/build/
+build.zip
 
 # Agent / tooling
 # ---
