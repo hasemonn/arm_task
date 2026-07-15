@@ -41,6 +41,7 @@
 # Data output
 # ---
 /Data/*
+/datafolder/
 
 # OS specific
 # ---
