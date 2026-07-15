@@ -1,5 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System.Collections.Concurrent;
+using System.Threading;
 using LSL;
 
 namespace LSL4Unity.Samples.SimpleInlet
@@ -15,8 +17,6 @@ namespace LSL4Unity.Samples.SimpleInlet
         public string StreamName = "OpenSignals";
         [Header("Display Settings")]
         public bool showOnGUI = true;
-        public bool showConsoleLog = true;
-        public int logInterval = 100;  // 何サンプルごとにログ出力
 
         [Header("Status (Read Only)")]
         public bool isSearching = false;
@@ -31,12 +31,46 @@ namespace LSL4Unity.Samples.SimpleInlet
         private StreamInlet inlet;
         private float[,] data_buffer;
         private double[] timestamp_buffer;
-        private double max_chunk_duration = 0.2;
+        private double max_chunk_duration = 1.0;
+
+        // Receive Thread
+        private Thread receiveThread;
+        private volatile bool running = false;
+        private const double RECEIVE_TIMEOUT = 0.5; // pull_sampleのブロッキング上限(秒)。runningを定期チェックして安全に終了するため
+        private ConcurrentQueue<RawSample> sampleQueue = new ConcurrentQueue<RawSample>();
+
+        // 受信生サンプル（最大8ch分をインライン保持する値型。ヒープ確保なし）
+        private struct RawSample
+        {
+            public double timestamp;
+            public float c0, c1, c2, c3, c4, c5, c6, c7;
+
+            public float this[int ch]
+            {
+                get
+                {
+                    switch (ch)
+                    {
+                        case 0: return c0; case 1: return c1; case 2: return c2; case 3: return c3;
+                        case 4: return c4; case 5: return c5; case 6: return c6; case 7: return c7;
+                        default: return 0f;
+                    }
+                }
+                set
+                {
+                    switch (ch)
+                    {
+                        case 0: c0 = value; break; case 1: c1 = value; break; case 2: c2 = value; break; case 3: c3 = value; break;
+                        case 4: c4 = value; break; case 5: c5 = value; break; case 6: c6 = value; break; case 7: c7 = value; break;
+                    }
+                }
+            }
+        }
 
         // Latest Data
         private float[] latestValues = new float[8];  // 最大8チャンネル
 
-        // 直近フレームで pull_chunk が返したサンプル数（1000Hz全サンプル処理用）
+        // 直近フレームでキューから取り出したサンプル数（1000Hz全サンプル処理用）
         public int LastChunkCount { get; private set; }
 
         void Start()
@@ -99,9 +133,9 @@ namespace LSL4Unity.Samples.SimpleInlet
                     targetStream = results[0];
                 }
 
+                channelCount = targetStream.channel_count();
+                samplingRate = (float)targetStream.nominal_srate();
                 inlet = new StreamInlet(targetStream);
-                channelCount = inlet.info().channel_count();
-                samplingRate = (float)inlet.info().nominal_srate();
 
                 int buf_samples = (int)Mathf.Ceil((float)(samplingRate * max_chunk_duration));
                 data_buffer = new float[buf_samples, channelCount];
@@ -111,6 +145,12 @@ namespace LSL4Unity.Samples.SimpleInlet
 
                 isConnected = true;
                 errorMessage = "";
+
+                running = true;
+                receiveThread = new Thread(ReceiveLoop);
+                receiveThread.IsBackground = true;   // アプリ終了時にプロセスを道連れにしない
+                receiveThread.Name = "LSL-EMG-Receive";
+                receiveThread.Start();
             }
             catch (System.Exception e)
             {
@@ -122,50 +162,64 @@ namespace LSL4Unity.Samples.SimpleInlet
             }
         }
 
+        void ReceiveLoop()
+        {
+            float[] sample = new float[channelCount];
+            while (running)
+            {
+                try
+                {
+                    double ts = inlet.pull_sample(sample, RECEIVE_TIMEOUT);
+                    if (ts != 0.0)
+                    {
+                        RawSample rs = new RawSample { timestamp = ts };
+                        int n = Mathf.Min(channelCount, 8);
+                        for (int ch = 0; ch < n; ch++) rs[ch] = sample[ch];
+                        sampleQueue.Enqueue(rs);
+                    }
+                    // ts==0.0 はタイムアウト(サンプル無し)。runningを再チェックしてループ継続。
+                }
+                catch (System.Exception)
+                {
+                    // inletがcloseされた/終了処理中など。ループを抜ける。
+                    break;
+                }
+            }
+        }
+
         void Update()
         {
-            if (!isConnected || inlet == null)
+            if (!isConnected)
             {
                 LastChunkCount = 0;
                 return;
             }
 
-            try
+            int cap = data_buffer.GetLength(0);
+            int count = 0;
+            while (count < cap && sampleQueue.TryDequeue(out RawSample rs))
             {
-                int samples_returned = inlet.pull_chunk(data_buffer, timestamp_buffer);
-                LastChunkCount = (samples_returned > 0) ? samples_returned : 0;
-
-                if (samples_returned > 0)// 受信できたかを判定
+                for (int ch = 0; ch < channelCount; ch++)
                 {
-                    // 最新サンプルを取得
-                    int lastIndex = samples_returned - 1;
-
-                    for (int ch = 0; ch < channelCount; ch++)
-                    {
-                        latestValues[ch] = data_buffer[lastIndex, ch];
-                    }
-
-                    receivedSamples += samples_returned;
+                    data_buffer[count, ch] = rs[ch];
                 }
+                timestamp_buffer[count] = rs.timestamp;
+                count++;
             }
-            catch (System.Exception e)
-            {
-                LastChunkCount = 0;
-                errorMessage = $"Data reception error: {e.Message}";
-                Debug.LogError($"[LSL] Error receiving data: {e.Message}");
-                isConnected = false;
-            }
-        }
+            LastChunkCount = count;
 
-        void LogData()
-        {
-            string logMessage = $"[Sample #{receivedSamples}] ";
-            // BITalino: latestValues[1]～[4]がA1～A4（EMG Ch1～4）
-            for (int i = 1; i <= 4 && i < channelCount; i++)
+            if (count > 0)// 受信できたかを判定
             {
-                logMessage += $"Ch{i}={latestValues[i]:F4} | ";
+                // 最新サンプルを取得
+                int lastIndex = count - 1;
+
+                for (int ch = 0; ch < channelCount; ch++)
+                {
+                    latestValues[ch] = data_buffer[lastIndex, ch];
+                }
+
+                receivedSamples += count;
             }
-            Debug.Log(logMessage);
         }
 
         void OnGUI()
@@ -201,6 +255,29 @@ namespace LSL4Unity.Samples.SimpleInlet
 
         void OnDestroy()
         {
+            StopReceiving();
+        }
+
+        void OnDisable()
+        {
+            StopReceiving();
+        }
+
+        void OnApplicationQuit()
+        {
+            StopReceiving();
+        }
+
+        void StopReceiving()
+        {
+            running = false;
+
+            if (receiveThread != null)
+            {
+                receiveThread.Join(1000); // pull_sampleのtimeout(0.5s)より長く待つ
+                receiveThread = null;
+            }
+
             if (inlet != null)
             {
                 inlet.close_stream();

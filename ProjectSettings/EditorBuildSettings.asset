@@ -4,7 +4,10 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/mycrate/sence/ball.unity
+    guid: 36785400e25d8354583572d1574c9844
   m_configObjects:
     Unity.XR.Oculus.Settings: {fileID: 11400000, guid: c6e012d5015c3d64d9269a01dae6b84c, type: 2}
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: adf90f1522e9795488b740306ee6e7c9, type: 2}

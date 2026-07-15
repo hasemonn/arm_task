@@ -241,20 +241,8 @@ namespace LSL4Unity.Samples.SimpleInlet
         }
 
 
-        public float GetNormalizedValue(int channel)
-        {
-            if (channel >= 1 && channel <= 4)
-                return normalizedValues[channel - 1];
-            return 0f;
-        }
 
 
-        public float GetRMSValue(int channel)
-        {
-            if (channel >= 1 && channel <= 4)
-                return rmsValues[channel - 1];
-            return 0f;
-        }
 
 
 

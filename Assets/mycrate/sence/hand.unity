@@ -692,7 +692,7 @@ MonoBehaviour:
     joint1Angle: 70
     joint2Angle: 14
   countdownText: {fileID: 1748051680}
-  showDebugGUI: 0
+  showDebugGUI: 1
   totalTrials: 10
   initialFreezeDuration: 1
   movementDuration: 5
@@ -769,7 +769,7 @@ MonoBehaviour:
   joint1ConstantDownSpeed: 10
   activationThreshold: 0
   dominanceThreshold: 0
-  showDebugGUI: 0
+  showDebugGUI: 1
   logControlValues: 0
 --- !u!1 &585804338
 GameObject:
@@ -1981,7 +1981,7 @@ MonoBehaviour:
   - 0
   - 0
   - 0
-  showDebugGUI: 0
+  showDebugGUI: 1
   emgSource: {fileID: 1489283118}
 --- !u!4 &1808495978
 Transform:
